@@ -214,13 +214,16 @@ def make_loader(records, img_size, train, batch_size, num_workers,
         records = records[:limit]
     ds = OreDataset(records, img_size, train, policy=policy, erase_prob=erase_prob)
     sampler = make_sampler(records, seed) if (train and use_sampler) else None
+    # pin_memory speeds host->device copies on CUDA; MPS gets no benefit from it.
+    # prefetch_factor only applies when workers exist (must be None otherwise).
     return DataLoader(
         ds,
         batch_size=batch_size,
         shuffle=(train and sampler is None),
         sampler=sampler,
         num_workers=num_workers,
-        pin_memory=False,          # MPS does not benefit from pinned memory
+        pin_memory=torch.cuda.is_available(),
+        prefetch_factor=4 if num_workers else None,
         drop_last=drop_last,
         persistent_workers=bool(num_workers),
     )
