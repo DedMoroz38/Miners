@@ -1,0 +1,5 @@
+# training artifacts (large checkpoints / generated reports)
+runs/
+splits.json
+__pycache__/
+*.pyc
