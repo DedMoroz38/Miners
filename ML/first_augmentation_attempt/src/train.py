@@ -19,9 +19,18 @@ import random
 import time
 
 import torch
+import torch.multiprocessing
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.metrics import f1_score
+
+# Containers (JupyterHub / k8s pods) often ship a tiny /dev/shm (~64MB). The
+# default 'file_descriptor' IPC strategy passes DataLoader worker tensors through
+# /dev/shm and exhausts it once you use several workers -> "Bus error / No space
+# left on device". 'file_system' stores those tensors under the (larger) temp dir
+# instead. Only needed off Apple MPS, where the default already works fine.
+if torch.cuda.is_available():
+    torch.multiprocessing.set_sharing_strategy("file_system")
 
 from common import CLASSES, RUNS_DIR, get_device, set_seed
 from data import (build_mixups, class_counts, class_weights,

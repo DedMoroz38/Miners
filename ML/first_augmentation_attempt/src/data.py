@@ -223,7 +223,7 @@ def make_loader(records, img_size, train, batch_size, num_workers,
         sampler=sampler,
         num_workers=num_workers,
         pin_memory=torch.cuda.is_available(),
-        prefetch_factor=4 if num_workers else None,
+        prefetch_factor=2 if num_workers else None,  # modest: limits /dev/shm buffering
         drop_last=drop_last,
         persistent_workers=bool(num_workers),
     )
