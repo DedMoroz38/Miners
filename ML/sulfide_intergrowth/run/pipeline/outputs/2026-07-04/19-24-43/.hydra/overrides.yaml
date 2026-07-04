@@ -1,0 +1,15 @@
+- paths.derived=run/outputs/smoke
+- paths.weights=run/outputs/smoke/weights
+- paths.outputs=run/outputs/smoke
+- model.segmenter.encoder=resnet18
+- model.segmenter.pretrained=false
+- model.classifier.backbone=convnext_tiny
+- model.classifier.pretrained=false
+- infer.seg_tile=512
+- infer.seg_stride=384
+- infer.cls_tile=256
+- infer.cls_stride=128
+- infer.batch_size=2
+- infer.use_unet=false
+- device=cpu
+- +input=/private/tmp/claude-501/-Users-den1shh-Documents-nornickel/16424ba1-ef43-4172-b5c2-002d483cd215/scratchpad/pano_crop.jpg

@@ -1,0 +1,3 @@
+- data.limit_per_class=10
+- paths.derived=run/outputs/smoke
+- train_segmenter.num_workers=4

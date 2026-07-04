@@ -1,0 +1,53 @@
+defaults:
+  - data: default
+  - model: default
+  - _self_
+
+hydra:
+  job:
+    chdir: false
+
+seed: 42
+device: auto            # auto | cuda | cpu | mps
+
+paths:
+  # resolved relative to the project root (ML/sulfide_intergrowth) unless absolute
+  data_root: ../../data
+  derived: run/outputs/derived      # index, pseudo masks, tile cache
+  outputs: run/outputs
+  weights: weights                  # final inference weights live here
+
+train_segmenter:
+  epochs: 25
+  batch_size: 16
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  num_workers: 8
+  amp: true
+  max_tiles_per_image: 6
+  val_fraction: 0.1
+
+train_classifier:
+  epochs: 12
+  batch_size: 24
+  lr: 1.0e-4
+  backbone_lr_mult: 0.1
+  weight_decay: 0.05
+  label_smoothing: 0.05
+  num_workers: 8
+  amp: true
+  n_folds: 5
+  tiles_per_image: 8            # sampled per epoch (balanced)
+  tta: true
+
+infer:
+  seg_tile: 1024
+  seg_stride: 768
+  cls_tile: 448
+  cls_stride: 224
+  seg_threshold: 0.5
+  min_component_px: 96          # drop specks smaller than this (area, px)
+  smooth_components_below_px: 20000   # majority-vote class inside small grains
+  overlay_alpha: 0.45
+  batch_size: 16
+  use_unet: true                # false -> classical photometric segmentation

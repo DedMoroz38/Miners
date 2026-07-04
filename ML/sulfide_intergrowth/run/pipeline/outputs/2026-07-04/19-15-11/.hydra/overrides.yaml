@@ -1,0 +1,11 @@
+- paths.derived=run/outputs/smoke
+- paths.weights=run/outputs/smoke/weights
+- model.segmenter.encoder=resnet18
+- model.segmenter.pretrained=false
+- train_segmenter.epochs=1
+- train_segmenter.batch_size=4
+- train_segmenter.max_tiles_per_image=2
+- train_segmenter.num_workers=0
+- train_segmenter.amp=false
+- data.tiles.size=256
+- device=cpu
