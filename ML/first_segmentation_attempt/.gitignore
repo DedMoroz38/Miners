@@ -1,0 +1,7 @@
+# runtime-generated (machine-specific absolute path)
+data.yaml
+# ultralytics outputs (weights, plots, val/predict results) — large
+runs/
+.venv/
+__pycache__/
+*.pyc

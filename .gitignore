@@ -15,7 +15,17 @@ ENV/
 *.pth
 *.onnx
 *.ckpt
+*.cache
 runs/
+
+# --- Dataset photos (large; never push, they break the remote) ---
+*.JPG
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tif
+*.tiff
 
 # --- Secrets / local env ---
 .env
