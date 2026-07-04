@@ -67,9 +67,70 @@ def build_metrics_table(class_map: np.ndarray,
     return df
 
 
+CLASS_LABEL = {CLASS_NORMAL: "normal", CLASS_FINE: "fine"}
+
+
+def build_segments_table(sulfide_mask: np.ndarray, p_fine: np.ndarray,
+                         p_sulfide: np.ndarray, threshold: float,
+                         microns_per_pixel: float | None = None) -> pd.DataFrame:
+    """Per-segment (per sulfide grain) class + confidence table.
+
+    Each connected component of the sulfide mask is one segment. Its class is
+    decided by the mean P(fine) over the grain vs `threshold`; `confidence` is
+    the probability of the assigned class (0.5..1). `conf_sulfide` is the mean
+    segmentation confidence over the grain (1.0 for classical segmentation).
+
+    Args:
+        sulfide_mask: uint8 HxW, >0 where sulfide.
+        p_fine: float HxW, P(fine intergrowth).
+        p_sulfide: float HxW, P(sulfide) from the segmenter.
+        threshold: fine-vs-normal decision threshold (from decision.json).
+        microns_per_pixel: adds an `area_mm2` column when set.
+
+    Returns:
+        DataFrame sorted by descending area, one row per segment.
+    """
+    mask = (sulfide_mask > 0).astype(np.uint8)
+    n, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    total_px = int(mask.size)
+    if n <= 1:
+        cols = ["segment_id", "class", "area_px", "area_pct",
+                "confidence", "conf_sulfide", "cx", "cy"]
+        return pd.DataFrame(columns=cols)
+
+    areas = stats[:, cv2.CC_STAT_AREA].astype(np.float64)
+    sum_pfine = np.zeros(n, dtype=np.float64)
+    sum_psulf = np.zeros(n, dtype=np.float64)
+    flat = labels.ravel()
+    np.add.at(sum_pfine, flat, p_fine.ravel())
+    np.add.at(sum_psulf, flat, p_sulfide.ravel())
+    mean_pfine = sum_pfine / np.maximum(areas, 1.0)
+    mean_psulf = sum_psulf / np.maximum(areas, 1.0)
+
+    rows = []
+    for cid in range(1, n):  # 0 is background
+        is_fine = mean_pfine[cid] >= threshold
+        cls = CLASS_FINE if is_fine else CLASS_NORMAL
+        conf = mean_pfine[cid] if is_fine else 1.0 - mean_pfine[cid]
+        row = {
+            "segment_id": cid,
+            "class": CLASS_LABEL[cls],
+            "area_px": int(areas[cid]),
+            "area_pct": round(100.0 * areas[cid] / total_px, 5),
+            "confidence": round(float(conf), 4),
+            "conf_sulfide": round(float(mean_psulf[cid]), 4),
+            "cx": int(centroids[cid, 0]),
+            "cy": int(centroids[cid, 1]),
+        }
+        if microns_per_pixel is not None and microns_per_pixel > 0:
+            row["area_mm2"] = round(areas[cid] * (microns_per_pixel / 1000.0) ** 2, 6)
+        rows.append(row)
+    return pd.DataFrame(rows).sort_values("area_px", ascending=False).reset_index(drop=True)
+
+
 def save_report(out_dir: Path, stem: str, overlay: np.ndarray, class_map: np.ndarray,
-                table: pd.DataFrame) -> None:
-    """Persist overlay JPEG, class-map PNG and the table (CSV + Markdown)."""
+                table: pd.DataFrame, segments: pd.DataFrame | None = None) -> None:
+    """Persist overlay JPEG, class-map PNG, the metrics table and per-segment CSV."""
     out_dir.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out_dir / f"{stem}_overlay.jpg"), overlay,
                 [cv2.IMWRITE_JPEG_QUALITY, 92])
@@ -78,4 +139,7 @@ def save_report(out_dir: Path, stem: str, overlay: np.ndarray, class_map: np.nda
     lines = ["| Метрика | Значение |", "|---|---|"]
     lines += [f"| {r.metric} | {r.value} |" for r in table.itertuples()]
     (out_dir / f"{stem}_metrics.md").write_text("\n".join(lines) + "\n")
+    if segments is not None:
+        segments.to_csv(out_dir / f"{stem}_segments.csv", index=False)
+        logger.info("Segments: %d grains -> %s_segments.csv", len(segments), stem)
     logger.info("Report saved to %s (%s_*)", out_dir, stem)

@@ -1,0 +1,17 @@
+# sulfide_intergrowth — inference/training deps.
+# V100 (CUDA 12.x): install torch/vision from the CUDA index first, e.g.
+#   pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu121
+#   pip install -r requirements.txt
+# (torch is listed here too so a plain `pip install -r` also works on CPU.)
+
+torch>=2.1
+torchvision>=0.16
+opencv-python-headless>=4.8
+numpy>=1.26
+scikit-learn>=1.3
+pandas>=2.0
+hydra-core>=1.3
+omegaconf>=2.3
+albumentations>=1.4
+tqdm>=4.66
+matplotlib>=3.8
