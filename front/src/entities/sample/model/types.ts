@@ -7,6 +7,7 @@ export type Sample = {
   bias: "common" | "thin" | "talc";
   imageUrl?: string; // object URL загруженного снимка (если есть)
   serverId?: string; // id образца на бэкенде — есть у реально загруженных
+  tilesUrl?: string; // DZI-дескриптор для OpenSeadragon (гигапиксельный зум)
 };
 
 export type FileError = "type" | "empty";

@@ -2,12 +2,13 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from PIL import Image
 
 from app import config
 from app.schemas import AnalysisResultOut, AnalyzeJobOut, JobStatusOut, SampleOut
-from app.services import jobs
+from app.services import jobs, tiling
 from app.services.analysis import analyze_sample
 
 # Гигапиксельные шлифы — снимаем защиту Pillow от «бомбы» (только для чтения размеров).
@@ -60,6 +61,11 @@ async def upload_sample(request: Request, file: UploadFile = File(...)) -> Sampl
 
     width, height = _read_dimensions(dest)
 
+    # DZI-пирамида тайлов для плавного зума гигапиксельных шлифов (best-effort).
+    tiles_url = None
+    if await run_in_threadpool(tiling.generate_tiles, dest, sample_id):
+        tiles_url = str(request.url_for("tiles", path=f"{sample_id}/img.dzi"))
+
     size_mb = size / (1024 * 1024)
     ext_label = (ext.lstrip(".") or "img").upper()
     meta = f"Загружен · {ext_label} · {size_mb:.1f} МБ"
@@ -77,6 +83,7 @@ async def upload_sample(request: Request, file: UploadFile = File(...)) -> Sampl
         width=width,
         height=height,
         image_url=image_url,
+        tiles_url=tiles_url,
     )
 
 

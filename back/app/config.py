@@ -8,6 +8,9 @@ STORAGE_DIR = Path(__file__).resolve().parent.parent / "storage"
 # Рабочие каталоги ML-заданий (talc/sulfide/merge на одно задание).
 JOBS_DIR = Path(__file__).resolve().parent.parent / "jobs"
 
+# Каталог с DZI-пирамидами тайлов для OpenSeadragon (по одной на образец).
+TILES_DIR = Path(__file__).resolve().parent.parent / "tiles"
+
 # Форматы панорамных снимков, которые принимает лаборатория.
 ALLOWED_CONTENT_TYPES = {"image/tiff", "image/png", "image/jpeg"}
 ALLOWED_EXT = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
@@ -70,3 +73,4 @@ ML_STEP_TIMEOUT = int(os.environ.get("ML_STEP_TIMEOUT", "1800"))
 
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 JOBS_DIR.mkdir(parents=True, exist_ok=True)
+TILES_DIR.mkdir(parents=True, exist_ok=True)

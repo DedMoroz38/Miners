@@ -6,11 +6,11 @@ import { SAMPLES, type Sample } from "@/entities/sample";
 import type { AnalysisResult } from "@/entities/analysis";
 import { analyzeSample } from "@/features/analyze-sample";
 import { UploadZone } from "@/features/upload-sample";
-import { Navbar } from "@/widgets/navbar";
 import { SampleQueue } from "@/widgets/sample-queue";
 import { SlideViewer } from "@/widgets/slide-viewer";
 import { MetricsPanel } from "@/widgets/metrics-panel";
 import { ExpertBar } from "@/widgets/expert-bar";
+import { Logo } from "@/shared/ui/logo";
 import { Spinner } from "@/shared/ui/spinner";
 
 export function LabConsole() {
@@ -63,20 +63,11 @@ export function LabConsole() {
   }
 
   return (
-    <main className="min-h-screen px-4 pb-16 pt-4">
-      <Navbar />
-
+    <main className="min-h-screen px-4 pb-16 pt-6">
       <div className="mx-auto max-w-[1400px]">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="heading text-4xl leading-none md:text-5xl">
-              Lab Console
-            </h1>
-            <p className="mt-2 max-w-xl text-sm text-ink-soft">
-              Автоматическая классификация руд по панорамным микрофотографиям
-              полированных шлифов — сегментация фаз, метрики и интерпретируемый
-              вывод.
-            </p>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div className="inline-flex items-center rounded-pill bg-white px-6 py-3">
+            <Logo className="h-7 w-auto text-ink" />
           </div>
           <button
             onClick={runAnalysis}

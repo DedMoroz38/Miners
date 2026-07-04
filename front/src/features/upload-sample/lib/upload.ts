@@ -11,7 +11,12 @@ export async function uploadAndBuild(
   try {
     const res = await uploadSample(file);
     return {
-      sample: { ...local, serverId: res.id, meta: res.meta || local.meta },
+      sample: {
+        ...local,
+        serverId: res.id,
+        meta: res.meta || local.meta,
+        tilesUrl: res.tiles_url ?? undefined,
+      },
       offline: false,
     };
   } catch {

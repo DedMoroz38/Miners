@@ -11,6 +11,7 @@ export type SampleUploadResponse = {
   width?: number | null;
   height?: number | null;
   image_url: string;
+  tiles_url?: string | null;
 };
 
 // Бэкенд отдаёт результат в форме, совпадающей с AnalysisResult (entities/analysis).

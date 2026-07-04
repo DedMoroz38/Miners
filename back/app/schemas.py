@@ -12,6 +12,7 @@ class SampleOut(BaseModel):
     width: int | None = None
     height: int | None = None
     image_url: str
+    tiles_url: str | None = None  # DZI-дескриптор для OpenSeadragon (None -> нет тайлов)
 
 
 class SegmentOut(BaseModel):
