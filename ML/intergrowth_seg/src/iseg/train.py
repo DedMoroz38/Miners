@@ -103,3 +103,59 @@ def evaluate(models, items: list[Item], device, thr: float, tile: int = 448):
     p = np.array([predict_image(models, it.path, device, tile=tile)[1] for it in tqdm(items, desc="test")])
     y = np.array([it.label for it in items])
     return f1_at(p, y, thr), p, y
+
+
+@torch.no_grad()
+def _val_probs(model, items, device, tile, tta=False, progress=False):
+    """Image-level p_fine over items (single forward, non-overlapping tiles = fast)."""
+    it = tqdm(items, desc="val", leave=False) if progress else items
+    p = np.array([predict_image([model], s.path, device, tile=tile, stride=tile, tta=tta)[1] for s in it])
+    y = np.array([s.label for s in items])
+    return p, y
+
+
+def train_single(train_items: list[Item], val_items: list[Item], device,
+                 cfg: TrainConfig = TrainConfig()):
+    """Plain train/val (no k-fold). Prints loss + val acc/F1 every epoch.
+
+    Returns (model, history, val_p_fine, val_y). Per-epoch val uses a single
+    forward over non-overlapping tiles (no TTA) so monitoring stays cheap.
+    """
+    model = build_model(ModelConfig(backbone=cfg.backbone, pretrained=True)).to(device)
+    ds = TileDataset(train_items, tile=cfg.tile, tiles_per_image=cfg.tiles_per_image, augment=True)
+    sampler = balanced_sampler(train_items, len(ds), cfg.tiles_per_image)
+    loader = DataLoader(ds, batch_size=cfg.batch, sampler=sampler,
+                        num_workers=cfg.num_workers, drop_last=True, pin_memory=True)
+    opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=cfg.epochs * max(len(loader), 1))
+    scaler = torch.cuda.amp.GradScaler(enabled=cfg.amp and device.type == "cuda")
+    w = _class_weights(train_items, device)
+
+    history: list[dict] = []
+    for epoch in range(cfg.epochs):
+        model.train()
+        run = 0.0
+        for batch in tqdm(loader, desc=f"epoch {epoch+1}/{cfg.epochs}"):
+            img = batch["image"].to(device, non_blocking=True)
+            lab = batch["label"].to(device, non_blocking=True)
+            opt.zero_grad()
+            with torch.autocast(device.type, enabled=cfg.amp and device.type == "cuda"):
+                loss = F.cross_entropy(model(img), lab, weight=w, label_smoothing=cfg.label_smoothing)
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
+            sched.step()
+            run += float(loss.detach())
+        loss_ep = run / max(len(loader), 1)
+
+        p, y = _val_probs(model, val_items, device, cfg.tile)
+        half = f1_at(p, y, 0.5)
+        best = best_threshold(p, y)
+        acc = (half.tp + half.tn) / max(len(y), 1)
+        history.append({"loss": loss_ep, "val_acc": acc, "val_f1": half.f1,
+                        "val_f1_best": best.f1, "val_thr": best.threshold})
+        print(f"epoch {epoch+1}: loss={loss_ep:.4f} | val_acc={acc*100:.1f}% "
+              f"val_F1@0.5={half.f1*100:.1f}% | best_F1={best.f1*100:.1f}% @thr={best.threshold:.2f} "
+              f"(P={best.precision*100:.0f}/R={best.recall*100:.0f})")
+    p, y = _val_probs(model, val_items, device, cfg.tile)
+    return model, history, p, y

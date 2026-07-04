@@ -35,12 +35,13 @@ def _batch_tensor(img, coords, tile):
 
 
 @torch.no_grad()
-def _tta_logits(models, batch, device):
-    """Mean softmax over models x {identity, hflip, vflip} TTA."""
+def _tta_logits(models, batch, device, tta: bool = True):
+    """Mean softmax over models x {identity, hflip, vflip} TTA (or identity only)."""
+    flips = (None, (-1,), (-2,)) if tta else (None,)
     prob = 0.0
     n = 0
     for m in models:
-        for flip in (None, (-1,), (-2,)):
+        for flip in flips:
             x = torch.flip(batch, dims=flip) if flip else batch
             prob = prob + F.softmax(m(x.to(device)), dim=1).cpu()
             n += 1
@@ -48,7 +49,8 @@ def _tta_logits(models, batch, device):
 
 
 @torch.no_grad()
-def predict_image(models, path, device, tile: int = 448, stride: int = 224, batch: int = 32):
+def predict_image(models, path, device, tile: int = 448, stride: int = 224,
+                  batch: int = 32, tta: bool = True):
     """Return (label, p_fine_image, heatmap_coords, per_tile_p_fine, hw)."""
     for m in models:
         m.eval()
@@ -58,7 +60,7 @@ def predict_image(models, path, device, tile: int = 448, stride: int = 224, batc
     tens = _batch_tensor(img, coords, tile)
     probs = []
     for i in range(0, len(tens), batch):
-        probs.append(_tta_logits(models, tens[i:i + batch], device))
+        probs.append(_tta_logits(models, tens[i:i + batch], device, tta=tta))
     p = torch.cat(probs)
     p_fine = p[:, 1].numpy()
     return int(p_fine.mean() >= 0.5), float(p_fine.mean()), coords, p_fine, hw
