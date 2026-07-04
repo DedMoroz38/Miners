@@ -17,6 +17,18 @@ ENV/
 *.ckpt
 runs/
 
+# --- Dataset photos (large; never push, they break the remote) ---
+ML/transformer_version/data/
+ML/first_labling_attempt/images/
+ML/first_labling_attempt/yolo_seg/images/
+*.JPG
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tif
+*.tiff
+
 # --- Secrets / local env ---
 .env
 *.secret_key
