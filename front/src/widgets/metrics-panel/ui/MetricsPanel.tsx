@@ -96,12 +96,12 @@ export function MetricsPanel({
             </span>
           </div>
         ))}
-        <div className="flex items-center justify-between border-t border-line px-4 py-2.5">
+        {/* <div className="flex items-center justify-between border-t border-line px-4 py-2.5">
           <span className="text-sm text-ink-soft">Точность (F1)</span>
           <span className="font-mono font-bold text-brand-dark">
             {result.f1.toFixed(3)}
           </span>
-        </div>
+        </div> */}
       </div>
 
       {/* Text conclusion */}

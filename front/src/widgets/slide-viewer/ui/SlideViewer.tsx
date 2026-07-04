@@ -407,11 +407,11 @@ export function SlideViewer({
               />
             ))}
           </div>
-          <span className="text-xs text-ink-faint">
+          {/* <span className="text-xs text-ink-faint">
             {selectedId
               ? "тяните точки · клик по ребру — добавить · правый клик по точке — удалить · цвет меняет фазу"
               : "клик по сегменту — выбрать"}
-          </span>
+          </span> */}
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={undo}
