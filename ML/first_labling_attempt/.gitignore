@@ -2,9 +2,12 @@
 .venv/
 # Label Studio local state (SQLite DB, uploaded media, cache)
 .label_studio/
-# Exported annotations + generated YOLO-seg dataset
+# Exported annotations
 exports/
-yolo_seg/
+# YOLO-seg: keep the labels/data.yaml/filename_map.json (small text, needed on the
+# remote GPU), but never the copied images (large — they travel outside git).
+yolo_seg/images/
+yolo_seg/_preview/
 # The images you drop in are data, not code — keep the folder, ignore contents
 images/*
 !images/.gitkeep
