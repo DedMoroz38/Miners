@@ -58,7 +58,7 @@ class ClassifierTrainer:
         logger.info("split: train %d imgs / val %d imgs / holdout %d imgs",
                     len(tr_ids), len(va_ids), len(holdout))
 
-        model, best_state = self._train(tr_ids, va_ids, images, tiles, cache_dir)
+        model, best_state = self._train(tr_ids, va_ids, images, tiles, cache_dir, weights_dir)
         best_path = weights_dir / "classifier_best.pt"
         torch.save({
             "model_state_dict": best_state,
@@ -103,7 +103,8 @@ class ClassifierTrainer:
 
     # ------------------------------------------------------------------ train
     def _train(self, tr_ids: np.ndarray, va_ids: np.ndarray, images: pd.DataFrame,
-               tiles: pd.DataFrame, cache_dir: Path) -> tuple[nn.Module, dict]:
+               tiles: pd.DataFrame, cache_dir: Path,
+               weights_dir: Path) -> tuple[nn.Module, dict]:
         tc = self.cfg.train_classifier
         tile = int(self.cfg.data.tiles.size)
         model = ModelFactory(str(self.cfg.model.classifier.name), self.cfg.model.classifier)
@@ -141,6 +142,11 @@ class ClassifierTrainer:
             val_f1 = f1_score(images.loc[va_ids, "label"], (probs >= 0.5).astype(int))
             logger.info("cls ep %d: loss=%.4f val_img_f1=%.4f",
                         epoch, float(np.mean(losses)), val_f1)
+            model_cfg = OmegaConf.to_container(self.cfg.model.classifier, resolve=True)
+            # overwrite the rolling last-epoch checkpoint every epoch
+            torch.save({"epoch": epoch, "val_f1": float(val_f1),
+                        "model_state_dict": model.state_dict(), "model_cfg": model_cfg},
+                       weights_dir / "classifier_last.pt")
             if val_f1 > best_f1:
                 best_f1 = val_f1
                 best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
