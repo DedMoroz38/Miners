@@ -19,6 +19,10 @@ ENV/
 runs/
 
 # --- Dataset photos (large; never push, they break the remote) ---
+ML/transformer_version/data/
+ML/first_labling_attempt/images/
+ML/first_labling_attempt/yolo_seg/images/
+data/
 *.JPG
 *.jpg
 *.jpeg
@@ -39,3 +43,6 @@ Thumbs.db
 # --- large fusion result dumps (kept locally, too big for GitHub) ---
 fusion_all_results/results.json
 fusion_results/results.json
+
+# --- transient logs ---
+*.log

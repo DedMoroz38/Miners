@@ -1,0 +1,23 @@
+# Core dependencies
+torch>=2.1
+torchvision>=0.16
+transformers>=4.40
+albumentations>=1.4
+opencv-python-headless>=4.9
+scikit-image>=0.22
+scikit-learn>=1.4
+scipy>=1.11
+numpy>=1.26
+pandas>=2.1
+matplotlib>=3.8
+tqdm>=4.66
+pillow>=10.0
+
+# Notebook support
+jupyter>=1.0
+ipython>=8.0
+ipykernel>=6.0
+
+# Development
+pytest>=8.0
+ruff>=0.4

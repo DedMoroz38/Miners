@@ -1,11 +1,13 @@
 # Python virtual environment
 .venv/
+# Claude Code local session state
+.claude/
 # Label Studio local state (SQLite DB, uploaded media, cache)
 .label_studio/
 # Exported annotations
 exports/
-# YOLO-seg: keep labels/data.yaml/filename_map.json (small text, needed on the
-# remote GPU) but never the copied images (large — transferred outside git).
+# YOLO-seg: keep the labels/data.yaml/filename_map.json (small text, needed on the
+# remote GPU), but never the copied images (large — they travel outside git).
 yolo_seg/images/
 yolo_seg/_preview/
 # The images you drop in are data, not code — keep the folder, ignore contents
