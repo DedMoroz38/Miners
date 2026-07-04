@@ -47,12 +47,7 @@ uv venv .venv && uv pip install -p .venv -e .
 source .venv/bin/activate
 cd run/pipeline
 
-# 0) один раз указать ссылку на датасет (.zip на Google Drive) — можно в
-#    run/conf/data/default.yaml (data.source.gdrive_url) или флагом ниже.
-python build_index.py \
-    data.source.gdrive_url='https://drive.google.com/file/d/<ID>/view?usp=sharing'
-#    ^ качает zip в data_root и распаковывает ТОЛЬКО если данных ещё нет;
-#      дальше все запуски идут с локальной копии. Отдельно: python fetch_data.py ...
+# данные лежат локально в miners/data (paths.data_root); ничего скачивать не надо
 python build_index.py            # 1) индекс + групповой holdout        (~секунды)
 python make_pseudo_masks.py      # 2) кэш + псевдо-маски + тайлы на диск (~25-35 мин CPU)
 python train_segmenter.py        # 3) U-Net -> weights/segmenter_best.pt (~60-90 мин)
@@ -69,26 +64,6 @@ python infer_panorama.py +input=/path/to/panorama.jpg   # одна панора�
 resnet34 @ 448, batch 16, AMP). Смоук на CPU:
 `data.limit_per_class=10 model.classifier.backbone=convnext_tiny train_classifier.epochs=1 ...`.
 
-## Загрузка датасета с Google Drive (один раз)
-
-`data.source.gdrive_url` — ссылка на **.zip** (или на папку Drive). Логика
-идемпотентна: `ensure_dataset` скачивает в `paths.data_root` только если папок
-классов там ещё нет или они пусты; при последующих запусках — мгновенный
-пропуск, обучение идёт с локальной копии. `build_index.py` вызывает её
-автоматически, так что отдельная команда не обязательна.
-
-```yaml
-# run/conf/data/default.yaml
-source:
-  gdrive_url: 'https://drive.google.com/file/d/<ID>/view?usp=sharing'
-  kind: auto            # auto -> zip по ссылке на файл, folder по /folders/
-  strip_top_level: true # снять обёрточную папку внутри архива (dataset_v1/ -> ...)
-  force: false          # true -> перекачать даже если данные есть
-```
-
-Требования: zip должен быть расшарен «Anyone with the link»; внутри — те же
-`ore_photos_by_grade_part1/2` (+ `panoramas`), что и в разделе про данные.
-
 ## Выход инференса (`run/outputs/reports/<имя>_*`)
 
 - `*_overlay.jpg` — исходник с цветовой маской;
@@ -98,8 +73,13 @@ source:
 
 ## Веса для инференса (`weights/`)
 
-`segmenter_best.pt`, `classifier_best.pt`, `decision.json` (порог, метрики,
-конфиг решения). `PanoramaPipeline` загружает всё сам.
+- `segmenter_best.pt` / `classifier_best.pt` — лучшие по val-метрике (их берёт
+  инференс);
+- `segmenter_last.pt` / `classifier_last.pt` — **перезаписываются после каждой
+  эпохи** (последнее состояние для докрутки/возобновления);
+- `decision.json` — порог, метрики, конфиг решения.
+
+`PanoramaPipeline` загружает `*_best.pt` сам.
 
 ## Известные ограничения
 
@@ -116,7 +96,7 @@ source:
 
 ```
 run/conf/          # Hydra-конфиги (data, model, train, infer)
-run/pipeline/      # fetch_data (0) + 5 шагов пайплайна
+run/pipeline/      # 5 шагов пайплайна
 src/data_module/   # препроцессинг, псевдо-маски, индекс, датасеты, ауги
 src/model_module/  # Factory/Registry: resnet_unet, convnext_tile
 src/trainer_module/# SegTrainer, ClassifierTrainer (групповой сплит + порог по val)

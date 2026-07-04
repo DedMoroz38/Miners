@@ -94,14 +94,18 @@ class SegTrainer:
             val_iou = self._validate(val_dl)
             logger.info("seg epoch %d: loss=%.4f val_iou=%.4f", epoch,
                         float(np.mean(losses)), val_iou)
+            ckpt = {
+                "epoch": epoch,
+                "model_state_dict": self.model.state_dict(),
+                "val_iou": val_iou,
+                "best_metric": max(best_iou, val_iou),
+                "model_cfg": OmegaConf.to_container(self.cfg.model.segmenter, resolve=True),
+            }
+            # overwrite the rolling last-epoch checkpoint every epoch
+            torch.save(ckpt, weights_dir / "segmenter_last.pt")
             if val_iou > best_iou:
                 best_iou = val_iou
-                torch.save({
-                    "epoch": epoch,
-                    "model_state_dict": self.model.state_dict(),
-                    "best_metric": best_iou,
-                    "model_cfg": OmegaConf.to_container(self.cfg.model.segmenter, resolve=True),
-                }, best_path)
+                torch.save(ckpt, best_path)
         logger.info("Segmenter done: best val IoU=%.4f -> %s", best_iou, best_path)
         return best_path
 

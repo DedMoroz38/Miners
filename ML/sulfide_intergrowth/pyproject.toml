@@ -15,7 +15,6 @@ dependencies = [
     "albumentations>=1.4",
     "tqdm>=4.66",
     "matplotlib>=3.8",
-    "gdown>=5.1",
 ]
 
 [project.optional-dependencies]

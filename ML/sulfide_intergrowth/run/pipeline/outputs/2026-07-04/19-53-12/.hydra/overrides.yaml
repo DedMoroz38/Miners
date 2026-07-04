@@ -1,3 +1,0 @@
-- data.limit_per_class=8
-- data.holdout_fraction=0.2
-- paths.derived=run/outputs/smoke

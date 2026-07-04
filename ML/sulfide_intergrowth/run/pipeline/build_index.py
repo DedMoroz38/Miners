@@ -5,7 +5,6 @@ import hydra
 from omegaconf import DictConfig
 
 import _bootstrap  # noqa: F401
-from src.data_module.download import SourceConfig, ensure_dataset
 from src.data_module.indexing import build_index, save_index
 from src.utils import resolve_path, set_seed, setup_logging
 
@@ -14,11 +13,10 @@ logger = logging.getLogger(__name__)
 
 @hydra.main(config_path="../conf", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
-    """Ensure the dataset is present (one-time fetch), then build the index."""
+    """Build and persist the image index."""
     setup_logging()
     set_seed(int(cfg.seed))
     data_root = resolve_path(cfg.paths.data_root)
-    ensure_dataset(data_root, list(cfg.data.part_dirs), SourceConfig.from_cfg(cfg.data.source))
     derived = resolve_path(cfg.paths.derived)
     df = build_index(
         data_root=data_root,
