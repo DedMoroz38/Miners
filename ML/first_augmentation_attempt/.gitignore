@@ -1,4 +1,4 @@
 # training artifacts (large checkpoints / generated reports)
-runs/
+!runs/**
 __pycache__/
 *.pyc

@@ -1,0 +1,29 @@
+{
+  "split": "test",
+  "n": 177,
+  "tta": true,
+  "accuracy": 0.9096045197740112,
+  "macro_f1": 0.8663561617159935,
+  "classes": [
+    "ordinary",
+    "hard",
+    "talc"
+  ],
+  "confusion_matrix": [
+    [
+      77,
+      4,
+      4
+    ],
+    [
+      1,
+      69,
+      3
+    ],
+    [
+      4,
+      0,
+      15
+    ]
+  ]
+}

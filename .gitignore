@@ -17,6 +17,8 @@ ENV/
 *.ckpt
 *.cache
 runs/
+!ML/first_segmentation_attempt/runs/
+!ML/first_augmentation_attempt/runs/
 
 # --- Dataset photos (large; never push, they break the remote) ---
 ML/transformer_version/data/

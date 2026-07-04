@@ -14,6 +14,12 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
 const PHASES: Phase[] = ["common", "thin", "talc"];
 
+// Глубина истории «отмены» (Ctrl/⌘+Z). 20 шагов — разумный дефолт.
+const UNDO_LIMIT = 20;
+// Системная комбинация отмены: ⌘Z на macOS, Ctrl+Z в остальных ОС.
+const IS_MAC =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.userAgent);
+
 export function SlideViewer({
   sample,
   result,
@@ -48,6 +54,25 @@ export function SlideViewer({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<number[][]>([]);
+  // Active vertex drag on the selected segment: which ring / point is being moved.
+  // `pushed` guards that a drag adds exactly ONE undo entry (on first move).
+  const vDrag = useRef<{ ri: number; pi: number; pushed: boolean } | null>(null);
+
+  // Undo/redo history: snapshots of the whole result taken BEFORE each edit.
+  const [undoStack, setUndoStack] = useState<AnalysisResult[]>([]);
+  const [redoStack, setRedoStack] = useState<AnalysisResult[]>([]);
+
+  // Drop history when the edited image changes or a new analysis starts.
+  useEffect(() => {
+    setUndoStack([]);
+    setRedoStack([]);
+  }, [sample.id]);
+  useEffect(() => {
+    if (status === "processing") {
+      setUndoStack([]);
+      setRedoStack([]);
+    }
+  }, [status]);
 
   useEffect(() => {
     if (!editMode) {
@@ -68,10 +93,11 @@ export function SlideViewer({
   const vbH = result?.imageHeight ?? 75;
 
   function onDown(e: React.MouseEvent) {
+    if (vDrag.current) return; // editing a vertex — don't pan
     drag.current = { x: e.clientX - pan.x, y: e.clientY - pan.y, moved: false };
   }
   function onMove(e: React.MouseEvent) {
-    if (!drag.current) return;
+    if (vDrag.current || !drag.current) return;
     drag.current.moved = true;
     setPan({ x: e.clientX - drag.current.x, y: e.clientY - drag.current.y });
   }
@@ -138,6 +164,7 @@ export function SlideViewer({
 
   function finishAdd() {
     if (result && draft.length >= 3) {
+      pushHistory();
       const seg: Segment = {
         id: `${drawPhase}-user-${Date.now()}`,
         phase: drawPhase,
@@ -154,6 +181,7 @@ export function SlideViewer({
   function pickPhase(phase: Phase) {
     setDrawPhase(phase);
     if (result && selectedId && !adding) {
+      pushHistory();
       const segs = result.segments.map((s) =>
         s.id === selectedId ? { ...s, phase } : s,
       );
@@ -163,6 +191,7 @@ export function SlideViewer({
 
   function deleteSelected() {
     if (!result || !selectedId) return;
+    pushHistory();
     onResultChange(
       recomputeResult(
         result,
@@ -171,6 +200,137 @@ export function SlideViewer({
     );
     setSelectedId(null);
   }
+
+  // --- editing the geometry of the SELECTED segment (vertex handles) ---
+  const selectedSeg = result?.segments.find((s) => s.id === selectedId) ?? null;
+
+  // Replace the selected segment's polygons and recompute shares/verdict live.
+  function commitSelectedPolys(polys: number[][][]) {
+    if (!result || !selectedId) return;
+    const segs = result.segments.map((s) =>
+      s.id === selectedId ? { ...s, polygons: polys } : s,
+    );
+    onResultChange(recomputeResult(result, segs));
+  }
+
+  function onVertexDown(e: React.PointerEvent, ri: number, pi: number) {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId); // keep events while off-handle
+    vDrag.current = { ri, pi, pushed: false };
+  }
+  function onVertexMove(e: React.PointerEvent) {
+    if (!vDrag.current || !selectedSeg) return;
+    const p = clientToNorm(e);
+    if (!p) return;
+    if (!vDrag.current.pushed) {
+      pushHistory(); // one undo entry per drag, only once it actually moves
+      vDrag.current.pushed = true;
+    }
+    const { ri, pi } = vDrag.current;
+    const polys = selectedSeg.polygons.map((ring, r) =>
+      r === ri ? ring.map((pt, i) => (i === pi ? p : pt)) : ring,
+    );
+    commitSelectedPolys(polys);
+  }
+  function onVertexUp(e: React.PointerEvent) {
+    if (!vDrag.current) return;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* capture already released */
+    }
+    vDrag.current = null;
+  }
+  function deleteVertex(e: React.MouseEvent, ri: number, pi: number) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedSeg || selectedSeg.polygons[ri].length <= 3) return; // keep a valid ring
+    pushHistory();
+    const polys = selectedSeg.polygons.map((ring, r) =>
+      r === ri ? ring.filter((_, i) => i !== pi) : ring,
+    );
+    commitSelectedPolys(polys);
+  }
+  function insertVertex(e: React.MouseEvent, ri: number, pi: number) {
+    e.stopPropagation();
+    if (!selectedSeg) return;
+    pushHistory();
+    const ring = selectedSeg.polygons[ri];
+    const a = ring[pi];
+    const b = ring[(pi + 1) % ring.length];
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const newRing = [...ring.slice(0, pi + 1), mid, ...ring.slice(pi + 1)];
+    const polys = selectedSeg.polygons.map((rg, idx) => (idx === ri ? newRing : rg));
+    commitSelectedPolys(polys);
+  }
+
+  // --- undo (Ctrl/⌘+Z + button) ---------------------------------------------
+  // Snapshot the current result BEFORE an edit. Edits are immutable (map/filter/
+  // spread), so keeping the reference is a valid snapshot — no deep clone needed.
+  function pushHistory() {
+    if (!result) return;
+    setUndoStack((s) => [...s, result].slice(-UNDO_LIMIT));
+    setRedoStack([]); // a fresh edit invalidates the redo branch
+  }
+
+  const canUndo = (adding && draft.length > 0) || undoStack.length > 0;
+  const canRedo = redoStack.length > 0;
+
+  // Clear selection if a restored state no longer contains the selected segment.
+  function reconcileSelection(next: AnalysisResult) {
+    if (selectedId && !next.segments.some((seg) => seg.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }
+
+  function undo() {
+    // While drawing a contour, step back one draft point first.
+    if (adding && draft.length > 0) {
+      setDraft((d) => d.slice(0, -1));
+      return;
+    }
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    setUndoStack((s) => s.slice(0, -1));
+    if (result) setRedoStack((r) => [...r, result].slice(-UNDO_LIMIT));
+    onResultChange(prev);
+    reconcileSelection(prev);
+  }
+
+  function redo() {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setRedoStack((r) => r.slice(0, -1));
+    if (result) setUndoStack((s) => [...s, result].slice(-UNDO_LIMIT));
+    onResultChange(next);
+    reconcileSelection(next);
+  }
+
+  // Keep one keydown listener that always calls the latest undo/redo/editMode.
+  const undoRef = useRef(undo);
+  undoRef.current = undo;
+  const redoRef = useRef(redo);
+  redoRef.current = redo;
+  const editModeRef = useRef(editMode);
+  editModeRef.current = editMode;
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!editModeRef.current) return;
+      const meta = IS_MAC ? e.metaKey : e.ctrlKey;
+      if (!meta || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undoRef.current();
+      } else if ((k === "y" && !e.shiftKey) || (k === "z" && e.shiftKey)) {
+        // Ctrl+Y (Windows/Linux) or Ctrl/⌘+Shift+Z (common / macOS) = redo
+        e.preventDefault();
+        redoRef.current();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const visibleSegments =
     result?.segments.filter(
@@ -249,10 +409,28 @@ export function SlideViewer({
           </div>
           <span className="text-xs text-ink-faint">
             {selectedId
-              ? "выбран сегмент — клик по цвету меняет фазу"
+              ? "тяните точки · клик по ребру — добавить · правый клик по точке — удалить · цвет меняет фазу"
               : "клик по сегменту — выбрать"}
           </span>
           <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={undo}
+              disabled={!canUndo}
+              aria-label="Отменить"
+              title={`Отменить (${IS_MAC ? "⌘Z" : "Ctrl+Z"})`}
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-base leading-none text-ink hover:border-ink/30 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-line"
+            >
+              ↶
+            </button>
+            <button
+              onClick={redo}
+              disabled={!canRedo}
+              aria-label="Повторить"
+              title={`Повторить (${IS_MAC ? "⌘⇧Z" : "Ctrl+Y"})`}
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-base leading-none text-ink hover:border-ink/30 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-line"
+            >
+              ↷
+            </button>
             <button
               onClick={deleteSelected}
               disabled={!selectedId}
@@ -400,6 +578,56 @@ export function SlideViewer({
                     strokeWidth={Math.max(vbW, vbH) / 400}
                   />
                 ))}
+              </g>
+            )}
+
+            {/* Vertex handles: reshape the selected segment (drag / insert / delete).
+                Radius divided by zoom so handles stay a constant on-screen size. */}
+            {editMode && !adding && selectedSeg && (
+              <g onMouseDown={(e) => e.stopPropagation()}>
+                {selectedSeg.polygons.map((ring, ri) => {
+                  const r = Math.max(vbW, vbH) / 150 / zoom;
+                  const sw = Math.max(vbW, vbH) / 600 / zoom;
+                  return (
+                    <g key={`edit-${ri}`}>
+                      {/* edge midpoints — click to insert a new vertex */}
+                      {ring.map((pt, pi) => {
+                        const nb = ring[(pi + 1) % ring.length];
+                        return (
+                          <circle
+                            key={`mid-${pi}`}
+                            cx={((pt[0] + nb[0]) / 2) * vbW}
+                            cy={((pt[1] + nb[1]) / 2) * vbH}
+                            r={r * 0.62}
+                            fill="#ffffff"
+                            fillOpacity={0.45}
+                            stroke="#2E2E48"
+                            strokeWidth={sw}
+                            style={{ cursor: "copy" }}
+                            onClick={(e) => insertVertex(e, ri, pi)}
+                          />
+                        );
+                      })}
+                      {/* vertices — drag to move, right-click to delete */}
+                      {ring.map((pt, pi) => (
+                        <circle
+                          key={`vtx-${pi}`}
+                          cx={pt[0] * vbW}
+                          cy={pt[1] * vbH}
+                          r={r}
+                          fill={PHASE_META[selectedSeg.phase].color}
+                          stroke="#ffffff"
+                          strokeWidth={sw}
+                          style={{ cursor: "grab", touchAction: "none" }}
+                          onPointerDown={(e) => onVertexDown(e, ri, pi)}
+                          onPointerMove={onVertexMove}
+                          onPointerUp={onVertexUp}
+                          onContextMenu={(e) => deleteVertex(e, ri, pi)}
+                        />
+                      ))}
+                    </g>
+                  );
+                })}
               </g>
             )}
           </svg>

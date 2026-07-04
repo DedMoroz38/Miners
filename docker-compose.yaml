@@ -1,0 +1,56 @@
+# Full stack: FastAPI backend + Next.js frontend.
+#
+# The backend invokes three ML pipelines as subprocesses, each in its own venv
+# (app/config.py). Those venvs and the trained weights are NOT in git and are far
+# too large to bake into the image, so we mount the repo's ML/ tree read-only and
+# point the backend at the pre-built Linux venvs via env vars.
+#
+# PREREQUISITES on the host (Linux), before `docker compose up`:
+#   1. Build each pipeline venv under ML/ (Linux, so bin/python exists):
+#        ML/first_labling_attempt/.venv       (talc: torch + ultralytics + classifier)
+#        ML/sulfide_intergrowth/.venv         (sulfide: torch + segmentation-models-pytorch)
+#   2. Drop the trained weights in place (see ML/sulfide_intergrowth/weights/README.md
+#      and ML/fusion defaults). decision.json is mandatory for the sulfide step.
+#
+# Without the venvs/weights the API still starts and uploads work; only the
+# /analyze step will error (surfaced to the frontend), which is the intended
+# graceful degradation.
+
+services:
+  back:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the ML code + pre-built venvs + weights so subprocesses can run.
+      - ./ML:/ml:ro
+      # Persist uploaded samples across restarts.
+      - back-storage:/app/storage
+    environment:
+      # Must match the names read in back/app/config.py.
+      - ML_ROOT=/ml
+      - TALC_PYTHON=/ml/first_labling_attempt/.venv/bin/python
+      - SULFIDE_PYTHON=/ml/sulfide_intergrowth/.venv/bin/python
+      - MERGE_PYTHON=/ml/first_labling_attempt/.venv/bin/python
+      - SULFIDE_WEIGHTS_DIR=/ml/sulfide_intergrowth/weights
+      - ML_STEP_TIMEOUT=1800
+    restart: unless-stopped
+
+  front:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # Browser talks to the backend on the host-published port.
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - back
+    restart: unless-stopped
+
+volumes:
+  back-storage:
