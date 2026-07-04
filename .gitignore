@@ -37,3 +37,6 @@ ML/first_labling_attempt/yolo_seg/images/
 .DS_Store
 Thumbs.db
 *.swp
+
+# --- transient logs ---
+*.log

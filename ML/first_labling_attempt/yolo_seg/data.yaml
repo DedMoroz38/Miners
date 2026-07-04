@@ -1,0 +1,5 @@
+path: /Users/egormaksimov/Documents/PROGRAMMING/miners/ML/first_labling_attempt/yolo_seg
+train: images/train
+val: images/val
+names:
+  0: talc

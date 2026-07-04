@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import ndimage as ndi
 from skimage.measure import regionprops
-from skimage.morphology import disk
+from skimage.morphology import binary_closing, disk
 
 from .constants import CLASS_GRAY, CLASS_SULFIDE
 
