@@ -1,8 +1,8 @@
 """Dataset indexing: scan class folders, derive slide groups, holdout split.
 
 Labels are IMAGE-LEVEL (from folder names): 0 = normal intergrowths
-("рядовые"), 1 = fine intergrowths ("тонкие" / "труднообогатимые").
-Talc folders are ignored entirely by design.
+("run_of_mine*"), 1 = fine intergrowths ("fine_grained" / "refractory_ores").
+Talc folders ("talc*") are ignored entirely by design.
 
 Slide grouping (leakage control):
 - part1 names like "2539439-3.JPG" carry a real polished-section id -> group

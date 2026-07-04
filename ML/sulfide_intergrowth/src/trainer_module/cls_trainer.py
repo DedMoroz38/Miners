@@ -1,10 +1,11 @@
-"""K-fold trainer for the intergrowth-type tile classifier.
+"""Trainer for the intergrowth-type tile classifier (single grouped split).
 
 Honest metric contract: pixel GT does not exist, the only ground truth is the
 image-level label. Therefore F1 is computed at IMAGE level: tile probabilities
-are soft-voted into an image probability; StratifiedGroupKFold over slide
-groups prevents leakage; the decision threshold is tuned on OOF predictions
-and the fold ensemble is finally checked on the untouched slide holdout.
+are soft-voted into an image probability. The trainval images are split once
+into train/val (grouped by slide, stratified by label) — no slide leaks across
+the boundary. The decision threshold is tuned on the validation images and the
+final number is reported on the untouched slide holdout.
 """
 import json
 import logging
@@ -30,71 +31,79 @@ EVAL_TILES_CAP = 24
 
 
 class ClassifierTrainer:
-    """Trains N folds, tunes the OOF threshold, evaluates the holdout ensemble."""
+    """Trains one model, tunes the val threshold, reports holdout F1."""
 
     def __init__(self, cfg, device: torch.device) -> None:
         self.cfg = cfg
         self.device = device
 
-    # ------------------------------------------------------------------ folds
     def fit(self, images: pd.DataFrame, tiles: pd.DataFrame, cache_dir: Path,
             weights_dir: Path) -> dict:
-        """Run the full K-fold protocol.
+        """Train, tune threshold, evaluate holdout, persist weights + decision.
 
         Args:
             images: index frame (image_id-indexed) with label/group/split/cache_image.
             tiles: eligible tiles table.
             cache_dir: derived cache dir.
-            weights_dir: output dir for fold weights + decision.json.
+            weights_dir: output dir for classifier_best.pt + decision.json.
 
         Returns:
-            Summary dict with OOF and holdout F1.
+            Summary dict with val and holdout F1.
         """
         tc = self.cfg.train_classifier
         weights_dir.mkdir(parents=True, exist_ok=True)
         trainval = images[images["split"] == "trainval"]
         holdout = images[images["split"] == "holdout"]
-        skf = StratifiedGroupKFold(n_splits=int(tc.n_folds), shuffle=True,
-                                   random_state=int(self.cfg.seed))
-        ids = trainval.index.to_numpy()
-        oof_prob = pd.Series(np.nan, index=trainval.index)
-        fold_paths: list[Path] = []
+        tr_ids, va_ids = self._grouped_split(trainval, float(tc.val_fraction))
+        logger.info("split: train %d imgs / val %d imgs / holdout %d imgs",
+                    len(tr_ids), len(va_ids), len(holdout))
 
-        for fold, (tr, va) in enumerate(skf.split(ids, trainval["label"], trainval["group"])):
-            tr_ids, va_ids = ids[tr], ids[va]
-            logger.info("fold %d: train %d imgs / val %d imgs", fold, len(tr_ids), len(va_ids))
-            model = self._train_one_fold(fold, tr_ids, va_ids, images, tiles, cache_dir)
-            path = weights_dir / f"classifier_fold{fold}.pt"
-            torch.save({
-                "fold": fold,
-                "model_state_dict": model.state_dict(),
-                "model_cfg": OmegaConf.to_container(self.cfg.model.classifier, resolve=True),
-            }, path)
-            fold_paths.append(path)
-            oof_prob.loc[va_ids] = self._image_probs(model, va_ids, images, tiles, cache_dir)
-            del model
-            torch.cuda.empty_cache() if self.device.type == "cuda" else None
+        model, best_state = self._train(tr_ids, va_ids, images, tiles, cache_dir)
+        best_path = weights_dir / "classifier_best.pt"
+        torch.save({
+            "model_state_dict": best_state,
+            "model_cfg": OmegaConf.to_container(self.cfg.model.classifier, resolve=True),
+        }, best_path)
 
-        thr, oof_f1 = self._tune_threshold(trainval["label"], oof_prob)
-        logger.info("OOF image-level F1=%.4f @ thr=%.3f", oof_f1, thr)
-        hold_f1 = self._eval_holdout(fold_paths, holdout, images, tiles, cache_dir, thr)
+        val_probs = self._image_probs(model, va_ids, images, tiles, cache_dir)
+        thr, val_f1 = self._tune_threshold(
+            images.loc[va_ids, "label"].to_numpy(), val_probs)
+        logger.info("VAL image-level F1=%.4f @ thr=%.3f", val_f1, thr)
+
+        hold_f1 = float("nan")
+        if not holdout.empty:
+            h_ids = holdout.index.to_numpy()
+            h_probs = self._image_probs(model, h_ids, images, tiles, cache_dir)
+            hold_f1 = float(f1_score(holdout["label"], (h_probs >= thr).astype(int)))
+        else:
+            logger.warning("Holdout is empty; skipping")
+
         decision = {
             "threshold": float(thr),
-            "oof_f1": float(oof_f1),
+            "val_f1": float(val_f1),
             "holdout_f1": float(hold_f1),
             "tile": int(self.cfg.data.tiles.size),
             "min_sulfide_frac": float(self.cfg.data.tiles.min_sulfide_frac),
-            "n_folds": int(tc.n_folds),
             "backbone": str(self.cfg.model.classifier.backbone),
         }
         (weights_dir / "decision.json").write_text(json.dumps(decision, indent=2))
-        logger.info("HOLDOUT image-level F1=%.4f | decision.json saved", hold_f1)
+        logger.info("HOLDOUT image-level F1=%.4f | %s saved", hold_f1, best_path.name)
         return decision
 
-    # ------------------------------------------------------------- fold train
-    def _train_one_fold(self, fold: int, tr_ids: np.ndarray, va_ids: np.ndarray,
-                        images: pd.DataFrame, tiles: pd.DataFrame,
-                        cache_dir: Path) -> nn.Module:
+    def _grouped_split(self, trainval: pd.DataFrame,
+                       val_fraction: float) -> tuple[np.ndarray, np.ndarray]:
+        """One grouped, stratified train/val split (first fold of a K-fold)."""
+        per_class_groups = int(trainval.groupby("label")["group"].nunique().min())
+        n_splits = max(2, min(int(round(1.0 / max(val_fraction, 1e-6))), per_class_groups))
+        skf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True,
+                                   random_state=int(self.cfg.seed))
+        ids = trainval.index.to_numpy()
+        tr, va = next(iter(skf.split(ids, trainval["label"], trainval["group"])))
+        return ids[tr], ids[va]
+
+    # ------------------------------------------------------------------ train
+    def _train(self, tr_ids: np.ndarray, va_ids: np.ndarray, images: pd.DataFrame,
+               tiles: pd.DataFrame, cache_dir: Path) -> tuple[nn.Module, dict]:
         tc = self.cfg.train_classifier
         tile = int(self.cfg.data.tiles.size)
         model = ModelFactory(str(self.cfg.model.classifier.name), self.cfg.model.classifier)
@@ -118,7 +127,7 @@ class ClassifierTrainer:
         for epoch in range(int(tc.epochs)):
             model.train()
             losses = []
-            for x, y in tqdm(train_dl, desc=f"fold{fold} ep{epoch}", leave=False):
+            for x, y in tqdm(train_dl, desc=f"cls ep{epoch}", leave=False):
                 x, y = x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
                 opt.zero_grad(set_to_none=True)
                 with torch.amp.autocast(self.device.type, enabled=use_amp):
@@ -130,14 +139,14 @@ class ClassifierTrainer:
             sched.step()
             probs = self._image_probs(model, va_ids, images, tiles, cache_dir)
             val_f1 = f1_score(images.loc[va_ids, "label"], (probs >= 0.5).astype(int))
-            logger.info("fold %d ep %d: loss=%.4f val_img_f1=%.4f",
-                        fold, epoch, float(np.mean(losses)), val_f1)
+            logger.info("cls ep %d: loss=%.4f val_img_f1=%.4f",
+                        epoch, float(np.mean(losses)), val_f1)
             if val_f1 > best_f1:
                 best_f1 = val_f1
                 best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
         if best_state is not None:
             model.load_state_dict(best_state)
-        return model
+        return model, best_state or model.state_dict()
 
     # -------------------------------------------------------------- inference
     @torch.no_grad()
@@ -167,30 +176,10 @@ class ClassifierTrainer:
         return per_img.reindex(image_ids).fillna(0.5).to_numpy()
 
     @staticmethod
-    def _tune_threshold(labels: pd.Series, probs: pd.Series) -> tuple[float, float]:
-        mask = probs.notna()
-        y, p = labels[mask].to_numpy(), probs[mask].to_numpy()
+    def _tune_threshold(labels: np.ndarray, probs: np.ndarray) -> tuple[float, float]:
         best_thr, best_f1 = 0.5, -1.0
         for thr in np.linspace(0.05, 0.95, 181):
-            f1 = f1_score(y, (p >= thr).astype(int))
+            f1 = f1_score(labels, (probs >= thr).astype(int))
             if f1 > best_f1:
                 best_thr, best_f1 = float(thr), float(f1)
         return best_thr, best_f1
-
-    def _eval_holdout(self, fold_paths: list[Path], holdout: pd.DataFrame,
-                      images: pd.DataFrame, tiles: pd.DataFrame,
-                      cache_dir: Path, thr: float) -> float:
-        if holdout.empty:
-            logger.warning("Holdout is empty; skipping")
-            return float("nan")
-        ids = holdout.index.to_numpy()
-        acc = np.zeros(len(ids))
-        for path in fold_paths:
-            model = ModelFactory(str(self.cfg.model.classifier.name), self.cfg.model.classifier)
-            ckpt = torch.load(path, map_location=self.device, weights_only=True)
-            model.load_state_dict(ckpt["model_state_dict"])
-            model.to(self.device)
-            acc += self._image_probs(model, ids, images, tiles, cache_dir)
-            del model
-        probs = acc / len(fold_paths)
-        return float(f1_score(holdout["label"], (probs >= thr).astype(int)))

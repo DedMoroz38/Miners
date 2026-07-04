@@ -43,10 +43,16 @@ def _tiles_for_mask(mask: np.ndarray, size: int, stride: int,
     return out
 
 
-def _process_one(args: tuple) -> tuple[int, float, list[tuple[int, int, float]]] | None:
+def _process_one(args: tuple) -> tuple[int, float, list[tuple[int, int, float, str]]] | None:
+    """Preprocess one image, build its pseudo mask and write 448px tile crops.
+
+    Tile crops are the classifier's fast path: reading a small JPEG per sample
+    instead of re-decoding the full 12-MPx frame makes epochs compute-bound.
+    """
     (image_id, path, cache_dir, pre_cfg, pseudo_cfg, size, stride, min_frac) = args
     img_out = cache_dir / f"{image_id:05d}.jpg"
     mask_out = cache_dir / f"{image_id:05d}_mask.png"
+    pre = None
     if img_out.exists() and mask_out.exists():
         mask = cv2.imread(str(mask_out), cv2.IMREAD_GRAYSCALE)
     else:
@@ -58,7 +64,20 @@ def _process_one(args: tuple) -> tuple[int, float, list[tuple[int, int, float]]]
         mask = sulfide_mask_classical(pre, pseudo_cfg)
         cv2.imwrite(str(img_out), pre, [cv2.IMWRITE_JPEG_QUALITY, 95])
         cv2.imwrite(str(mask_out), mask)
-    return image_id, float((mask > 0).mean()), _tiles_for_mask(mask, size, stride, min_frac)
+    tiles = _tiles_for_mask(mask, size, stride, min_frac)
+    tile_dir = cache_dir / "tiles" / f"{image_id:05d}"
+    tile_dir.mkdir(parents=True, exist_ok=True)
+    out: list[tuple[int, int, float, str]] = []
+    for k, (x, y, frac) in enumerate(tiles):
+        rel = f"tiles/{image_id:05d}/{k:04d}.jpg"
+        crop_path = cache_dir / rel
+        if not crop_path.exists():
+            if pre is None:
+                pre = cv2.imread(str(img_out), cv2.IMREAD_COLOR)
+            cv2.imwrite(str(crop_path), pre[y:y + size, x:x + size],
+                        [cv2.IMWRITE_JPEG_QUALITY, 92])
+        out.append((x, y, frac, rel))
+    return image_id, float((mask > 0).mean()), out
 
 
 @hydra.main(config_path="../conf", config_name="config", version_base=None)
@@ -87,8 +106,9 @@ def main(cfg: DictConfig) -> None:
                 continue
             image_id, frac, tiles = res
             fracs[image_id] = frac
-            tile_rows += [{"image_id": image_id, "x": x, "y": y, "sulfide_frac": f}
-                          for x, y, f in tiles]
+            tile_rows += [{"image_id": image_id, "x": x, "y": y,
+                           "sulfide_frac": f, "tile_path": rel}
+                          for x, y, f, rel in tiles]
 
     df["image_id"] = df.index
     df["cache_image"] = [f"{i:05d}.jpg" for i in df.index]

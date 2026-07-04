@@ -41,6 +41,15 @@
 - Flat-field деление гасило крупные сульфидные массы → заменено anchor-нормировкой (см. notes.md).
 - pandas 3.0 groupby.apply без группировочной колонки; to_markdown требует tabulate — обойдено.
 
+## Decisions (v2, по фидбеку пользователя 2026-07-04)
+- K-fold убран: один групповой train/val сплит (StratifiedGroupKFold, первый фолд),
+  порог по val, финал на holdout → weights/classifier_best.pt.
+- Тайлы классификатора режутся на диск в make_pseudo_masks (fast path в
+  ClsTileDataset) → эпохи compute-bound, весь пайплайн ~2-2.5 ч на V100.
+- Папки данных переименованы в латиницу: run_of_mine* / fine_grained /
+  refractory_ores / talc* — конфиг обновлён, полный индекс: 1051 img,
+  935 групп, 565/486, holdout 159.
+
 ## Status
 **Done** — код готов и смоук-проверен на CPU; полноценное обучение — на V100
 (команды в README). Осталось прогнать train_classifier.py и проверить holdout F1 ≥ 0.90.

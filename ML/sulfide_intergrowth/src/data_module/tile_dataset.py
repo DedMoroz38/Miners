@@ -56,9 +56,18 @@ class ClsTileDataset(Dataset):
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         t_row = self.tiles.iloc[idx]
         img_row = self.images.loc[int(t_row["image_id"])]
-        image = self._get_image(str(img_row["cache_image"]))
-        x0, y0, t = int(t_row["x"]), int(t_row["y"]), self.tile
-        patch = image[y0:y0 + t, x0:x0 + t]
+        t = self.tile
+        tile_rel = t_row.get("tile_path")
+        if isinstance(tile_rel, str) and tile_rel:
+            # fast path: pre-cut crop written by make_pseudo_masks.py
+            patch = cv2.imread(str(self.cache_dir / tile_rel), cv2.IMREAD_COLOR)
+            if patch is None:
+                raise FileNotFoundError(f"Missing tile crop: {tile_rel}")
+            patch = patch[:t, :t]
+        else:
+            image = self._get_image(str(img_row["cache_image"]))
+            x0, y0 = int(t_row["x"]), int(t_row["y"])
+            patch = image[y0:y0 + t, x0:x0 + t]
         if patch.shape[0] != t or patch.shape[1] != t:
             patch = cv2.copyMakeBorder(patch, 0, t - patch.shape[0], 0, t - patch.shape[1],
                                        cv2.BORDER_REFLECT)

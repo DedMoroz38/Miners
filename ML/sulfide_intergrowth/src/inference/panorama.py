@@ -63,16 +63,21 @@ class PanoramaPipeline:
         return model
 
     def _load_classifiers(self, weights_dir: Path) -> list:
+        paths = [weights_dir / "classifier_best.pt"]
+        if not paths[0].is_file():
+            paths = sorted(weights_dir.glob("classifier_fold*.pt"))
         models = []
-        for path in sorted(weights_dir.glob("classifier_fold*.pt")):
+        for path in paths:
+            if not path.is_file():
+                continue
             ckpt = torch.load(path, map_location=self.device, weights_only=True)
             model = ModelFactory(str(self.cfg.model.classifier.name), self.cfg.model.classifier)
             model.load_state_dict(ckpt["model_state_dict"])
             model.to(self.device)
             models.append(model)
         if not models:
-            raise FileNotFoundError(f"No classifier_fold*.pt in {weights_dir}")
-        logger.info("Loaded %d classifier fold(s)", len(models))
+            raise FileNotFoundError(f"No classifier weights in {weights_dir}")
+        logger.info("Loaded %d classifier model(s)", len(models))
         return models
 
     # ------------------------------------------------------------------- run

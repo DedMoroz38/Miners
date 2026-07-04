@@ -1,0 +1,12 @@
+- paths.derived=run/outputs/smoke
+- paths.weights=run/outputs/smoke/weights
+- model.classifier.backbone=convnext_tiny
+- model.classifier.pretrained=false
+- train_classifier.epochs=1
+- train_classifier.batch_size=4
+- train_classifier.tiles_per_image=2
+- train_classifier.num_workers=0
+- train_classifier.amp=false
+- train_classifier.tta=false
+- data.tiles.size=256
+- device=cpu
