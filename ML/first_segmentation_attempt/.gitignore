@@ -1,11 +1,11 @@
 # runtime-generated (machine-specific absolute path)
 data.yaml
 # ultralytics outputs (weights, plots, val/predict results) — large
-runs/*
-!runs/predict_part2_otalk/
-!runs/predict_part2_otalk/**
-!runs/predict_part2_ryadovye/
-!runs/predict_part2_ryadovye/**
+!runs/**
+runs/predict_part2_otalk/
+runs/predict_part2_otalk/**
+runs/predict_part2_ryadovye/
+runs/predict_part2_ryadovye/**
 .venv/
 __pycache__/
 *.pyc
