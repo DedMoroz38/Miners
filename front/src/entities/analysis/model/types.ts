@@ -1,17 +1,18 @@
 import type { Phase } from "@/entities/phase";
 
-// Зерно/сегмент фазовой маски (в проде — из пиксельной сегментации).
-export type Grain = {
-  cx: number; // 0..100 (viewBox %)
-  cy: number;
-  r: number;
+// Сегмент фазовой маски. Полигоны — в НОРМАЛИЗОВАННЫХ координатах (x,y в 0..1),
+// поэтому не зависят от разрешения снимка. Одно кольцо = один замкнутый контур.
+export type Segment = {
+  id: string;
   phase: Phase;
   confidence: number; // 0..1
+  areaFrac: number; // доля площади кадра (0..1)
+  polygons: number[][][]; // [ [ [x,y], ... ], ... ]
 };
 
 export type Verdict = "рядовая" | "труднообогатимая" | "оталькованная";
 
-// Контракт результата анализа — под замену реальным ML-API.
+// Контракт результата анализа — совпадает с бэкендом (AnalysisResultOut).
 export type AnalysisResult = {
   sulfideShare: number; // % площади (обычные + тонкие)
   commonShare: number; // % от сульфидов
@@ -20,5 +21,7 @@ export type AnalysisResult = {
   verdict: Verdict;
   conclusion: string;
   f1: number;
-  grains: Grain[];
+  imageWidth: number;
+  imageHeight: number;
+  segments: Segment[];
 };

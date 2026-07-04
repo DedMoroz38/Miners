@@ -6,6 +6,7 @@ export type Sample = {
   seed: number; // детерминированность мок-инференса
   bias: "common" | "thin" | "talc";
   imageUrl?: string; // object URL загруженного снимка (если есть)
+  serverId?: string; // id образца на бэкенде — есть у реально загруженных
 };
 
 export type FileError = "type" | "empty";

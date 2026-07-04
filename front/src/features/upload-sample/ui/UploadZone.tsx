@@ -4,30 +4,41 @@ import { useRef, useState } from "react";
 import {
   ACCEPTED_EXT,
   validateFile,
-  sampleFromFile,
   type FileError,
   type Sample,
 } from "@/entities/sample";
+import { uploadAndBuild } from "../lib/upload";
 
 export function UploadZone({ onUpload }: { onUpload: (s: Sample[]) => void }) {
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  function handle(fileList: FileList | null) {
+  async function handle(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
-    const accepted: Sample[] = [];
+    const valid: File[] = [];
     const rejected: string[] = [];
     for (const f of Array.from(fileList)) {
       const err: FileError | null = validateFile(f);
       if (err) rejected.push(f.name);
-      else accepted.push(sampleFromFile(f));
+      else valid.push(f);
     }
+
+    setBusy(true);
+    const built = await Promise.all(valid.map((f) => uploadAndBuild(f)));
+    setBusy(false);
+
+    const accepted = built.map((b) => b.sample);
     if (accepted.length) onUpload(accepted);
+
+    const offline = built.some((b) => b.offline);
     setError(
       rejected.length
         ? `Пропущено (неподдерживаемый формат): ${rejected.join(", ")}`
-        : null,
+        : offline
+          ? "Бэкенд недоступен — образец добавлен локально (демо-анализ)."
+          : null,
     );
   }
 
@@ -65,7 +76,11 @@ export function UploadZone({ onUpload }: { onUpload: (s: Sample[]) => void }) {
         ⬆
       </div>
       <p className="text-sm font-semibold text-ink">
-        {dragging ? "Отпустите для загрузки" : "Перетащите панорамный шлиф"}
+        {busy
+          ? "Загрузка…"
+          : dragging
+            ? "Отпустите для загрузки"
+            : "Перетащите панорамный шлиф"}
       </p>
       <p className="mt-1 text-xs text-ink-faint">
         TIFF · PNG · JPEG · до 10000×10000 px

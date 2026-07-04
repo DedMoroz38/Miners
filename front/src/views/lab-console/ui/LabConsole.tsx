@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { Phase } from "@/entities/phase";
 import { SAMPLES, type Sample } from "@/entities/sample";
 import type { AnalysisResult } from "@/entities/analysis";
-import { analyze } from "@/features/analyze-sample";
+import { analyzeSample } from "@/features/analyze-sample";
 import { UploadZone } from "@/features/upload-sample";
 import { Navbar } from "@/widgets/navbar";
 import { SampleQueue } from "@/widgets/sample-queue";
@@ -20,6 +20,8 @@ export function LabConsole() {
   const [status, setStatus] = useState<"idle" | "processing" | "done">("idle");
   const [step, setStep] = useState(0);
   const [selectedPhase, setSelectedPhase] = useState<"all" | Phase>("all");
+  const [editMode, setEditMode] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function selectSample(s: Sample) {
     setActive(s);
@@ -27,6 +29,8 @@ export function LabConsole() {
     setStatus("idle");
     setStep(0);
     setSelectedPhase("all");
+    setEditMode(false);
+    setError(null);
   }
 
   function onUpload(newOnes: Sample[]) {
@@ -35,20 +39,27 @@ export function LabConsole() {
     selectSample(newOnes[0]);
   }
 
-  function runAnalysis() {
+  async function runAnalysis() {
     setStatus("processing");
     setResult(null);
+    setEditMode(false);
+    setError(null);
     setStep(0);
-    // Имитация пошагового пайплайна предобработки + инференса.
-    const total = 4;
+    // Пошаговый индикатор предобработки, пока идёт инференс.
     const perStep = 420;
-    for (let i = 1; i <= total; i++) {
-      setTimeout(() => setStep(i), perStep * i);
-    }
-    setTimeout(() => {
-      setResult(analyze(active));
+    const timers = [1, 2, 3, 4].map((i) =>
+      setTimeout(() => setStep(i), perStep * i),
+    );
+    try {
+      const res = await analyzeSample(active);
+      setResult(res);
       setStatus("done");
-    }, perStep * total + 200);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось выполнить анализ.");
+      setStatus("idle");
+    } finally {
+      timers.forEach(clearTimeout);
+    }
   }
 
   return (
@@ -101,12 +112,23 @@ export function LabConsole() {
               selectedPhase={selectedPhase}
               status={status}
               step={step}
+              editMode={editMode}
+              onResultChange={setResult}
             />
+            {error && (
+              <p className="mt-2 rounded-xl bg-phase-thin/10 px-3 py-2 text-xs text-phase-thin">
+                {error}
+              </p>
+            )}
           </div>
 
           {/* Center: expert bar (ряд 2) */}
           <div className="lg:col-start-2 lg:row-start-2">
-            <ExpertBar disabled={!result} />
+            <ExpertBar
+              disabled={!result}
+              editMode={editMode}
+              onToggleEdit={() => setEditMode((v) => !v)}
+            />
           </div>
 
           {/* Right: metrics — на всю высоту (оба ряда) */}

@@ -4,13 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import type { Phase } from "@/entities/phase";
 import { PHASE_META } from "@/entities/phase";
 import type { Sample } from "@/entities/sample";
-import type { AnalysisResult } from "@/entities/analysis";
+import type { AnalysisResult, Segment } from "@/entities/analysis";
 import { PREPROCESS_STEPS } from "@/entities/analysis";
+import { recomputeResult } from "@/features/analyze-sample";
 
 type Layers = { image: boolean; mask: boolean; heatmap: boolean };
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
+const PHASES: Phase[] = ["common", "thin", "talc"];
 
 export function SlideViewer({
   sample,
@@ -18,12 +20,16 @@ export function SlideViewer({
   selectedPhase,
   status,
   step,
+  editMode,
+  onResultChange,
 }: {
   sample: Sample;
   result: AnalysisResult | null;
   selectedPhase: "all" | Phase;
   status: "idle" | "processing" | "done";
   step: number;
+  editMode: boolean;
+  onResultChange: (r: AnalysisResult) => void;
 }) {
   const [layers, setLayers] = useState<Layers>({
     image: true,
@@ -33,10 +39,24 @@ export function SlideViewer({
   const [maskOpacity, setMaskOpacity] = useState(0.55);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const drag = useRef<{ x: number; y: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
-  // Зеркалим стейт в ref-ы, чтобы нативный wheel-обработчик читал свежие значения.
+  // --- editing state ---
+  const [drawPhase, setDrawPhase] = useState<Phase>("talc");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState<number[][]>([]);
+
+  useEffect(() => {
+    if (!editMode) {
+      setSelectedId(null);
+      setAdding(false);
+      setDraft([]);
+    }
+  }, [editMode]);
+
   const zoomRef = useRef(zoom);
   const panRef = useRef(pan);
   zoomRef.current = zoom;
@@ -44,11 +64,15 @@ export function SlideViewer({
 
   const toggle = (k: keyof Layers) => setLayers((l) => ({ ...l, [k]: !l[k] }));
 
+  const vbW = result?.imageWidth ?? 100;
+  const vbH = result?.imageHeight ?? 75;
+
   function onDown(e: React.MouseEvent) {
-    drag.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+    drag.current = { x: e.clientX - pan.x, y: e.clientY - pan.y, moved: false };
   }
   function onMove(e: React.MouseEvent) {
     if (!drag.current) return;
+    drag.current.moved = true;
     setPan({ x: e.clientX - drag.current.x, y: e.clientY - drag.current.y });
   }
   function onUp() {
@@ -59,13 +83,9 @@ export function SlideViewer({
     setPan({ x: 0, y: 0 });
   }
 
-  // Зум колесом с приближением к точке под курсором.
-  // Нативный listener с { passive: false } — иначе preventDefault() не работает
-  // (React вешает onWheel как passive) и вместе с зумом скроллится вся страница.
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
-
     function onWheel(e: WheelEvent) {
       e.preventDefault();
       const rect = el!.getBoundingClientRect();
@@ -84,7 +104,6 @@ export function SlideViewer({
       );
       setZoom(nextZoom);
     }
-
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
@@ -97,8 +116,64 @@ export function SlideViewer({
     });
   }
 
-  const visibleGrains =
-    result?.grains.filter(
+  // Экранные координаты -> нормализованные (0..1) через матрицу самого SVG:
+  // getScreenCTM учитывает и viewBox, и CSS-трансформы зума/панорамирования.
+  function clientToNorm(e: React.MouseEvent): number[] | null {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return null;
+    const p = pt.matrixTransform(ctm.inverse());
+    return [clamp(p.x / vbW, 0, 1), clamp(p.y / vbH, 0, 1)];
+  }
+
+  function onSvgClick(e: React.MouseEvent) {
+    if (!adding) return;
+    const p = clientToNorm(e);
+    if (p) setDraft((d) => [...d, p]);
+  }
+
+  function finishAdd() {
+    if (result && draft.length >= 3) {
+      const seg: Segment = {
+        id: `${drawPhase}-user-${Date.now()}`,
+        phase: drawPhase,
+        confidence: 1,
+        areaFrac: 0,
+        polygons: [draft],
+      };
+      onResultChange(recomputeResult(result, [...result.segments, seg]));
+    }
+    setAdding(false);
+    setDraft([]);
+  }
+
+  function pickPhase(phase: Phase) {
+    setDrawPhase(phase);
+    if (result && selectedId && !adding) {
+      const segs = result.segments.map((s) =>
+        s.id === selectedId ? { ...s, phase } : s,
+      );
+      onResultChange(recomputeResult(result, segs));
+    }
+  }
+
+  function deleteSelected() {
+    if (!result || !selectedId) return;
+    onResultChange(
+      recomputeResult(
+        result,
+        result.segments.filter((s) => s.id !== selectedId),
+      ),
+    );
+    setSelectedId(null);
+  }
+
+  const visibleSegments =
+    result?.segments.filter(
       (g) => selectedPhase === "all" || g.phase === selectedPhase,
     ) ?? [];
 
@@ -107,11 +182,7 @@ export function SlideViewer({
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <LayerChip
-            active={layers.image}
-            onClick={() => toggle("image")}
-            label="Исходник"
-          />
+          <LayerChip active={layers.image} onClick={() => toggle("image")} label="Исходник" />
           <LayerChip
             active={layers.mask}
             onClick={() => toggle("mask")}
@@ -159,10 +230,73 @@ export function SlideViewer({
         </div>
       </div>
 
+      {/* Edit toolbar */}
+      {editMode && result && (
+        <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface/60 px-5 py-2.5">
+          <span className="text-xs font-semibold text-ink-soft">Правка:</span>
+          <div className="flex items-center gap-1.5">
+            {PHASES.map((p) => (
+              <button
+                key={p}
+                onClick={() => pickPhase(p)}
+                title={PHASE_META[p].label}
+                className={`h-6 w-6 rounded-full border-2 transition ${
+                  drawPhase === p ? "border-ink" : "border-transparent"
+                }`}
+                style={{ background: PHASE_META[p].color }}
+              />
+            ))}
+          </div>
+          <span className="text-xs text-ink-faint">
+            {selectedId
+              ? "выбран сегмент — клик по цвету меняет фазу"
+              : "клик по сегменту — выбрать"}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={deleteSelected}
+              disabled={!selectedId}
+              className="btn-soft !py-1 text-xs disabled:opacity-40"
+            >
+              Удалить
+            </button>
+            {adding ? (
+              <>
+                <button onClick={finishAdd} className="btn-primary !py-1 text-xs">
+                  Готово ({draft.length})
+                </button>
+                <button
+                  onClick={() => {
+                    setAdding(false);
+                    setDraft([]);
+                  }}
+                  className="btn-soft !py-1 text-xs"
+                >
+                  Отмена
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => {
+                  setSelectedId(null);
+                  setAdding(true);
+                  setDraft([]);
+                }}
+                className="btn-soft !py-1 text-xs"
+              >
+                + Контур ({PHASE_META[drawPhase].label})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Canvas */}
       <div
         ref={canvasRef}
-        className="relative aspect-[4/3] w-full cursor-grab overflow-hidden bg-[#0c0c14] active:cursor-grabbing"
+        className={`relative aspect-[4/3] w-full overflow-hidden bg-[#0c0c14] ${
+          adding ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"
+        }`}
         onMouseDown={onDown}
         onMouseMove={onMove}
         onMouseUp={onUp}
@@ -176,7 +310,6 @@ export function SlideViewer({
             transition: drag.current ? "none" : "transform 0.12s ease-out",
           }}
         >
-          {/* Реальное изображение шлифа, если загружено */}
           {layers.image && sample.imageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -188,9 +321,11 @@ export function SlideViewer({
           )}
 
           <svg
-            viewBox="0 0 100 75"
+            ref={svgRef}
+            viewBox={`0 0 ${vbW} ${vbH}`}
             className="absolute inset-0 h-full w-full"
             preserveAspectRatio="xMidYMid slice"
+            onClick={onSvgClick}
           >
             <defs>
               <radialGradient id="matrix" cx="40%" cy="35%">
@@ -199,51 +334,70 @@ export function SlideViewer({
               </radialGradient>
             </defs>
 
-            {/* Синтетическая матрица + зёрна — только когда нет реального снимка */}
+            {/* Тёмная матрица-подложка, когда реального снимка нет */}
             {layers.image && !sample.imageUrl && (
-              <g>
-                <rect width="100" height="75" fill="url(#matrix)" />
-                {(result?.grains ?? placeholderGrains).map((b, i) => (
-                  <circle
-                    key={i}
-                    cx={b.cx}
-                    cy={b.cy * 0.75}
-                    r={b.r}
-                    fill={
-                      "phase" in b && b.phase === "talc" ? "#2c2c3a" : "#c7c9d1"
-                    }
-                    opacity={"phase" in b && b.phase === "talc" ? 0.7 : 0.9}
-                  />
-                ))}
-              </g>
+              <rect width={vbW} height={vbH} fill="url(#matrix)" />
             )}
 
-            {/* Phase mask overlay */}
+            {/* Phase mask overlay (polygons) */}
             {layers.mask && result && (
-              <g opacity={maskOpacity}>
-                {visibleGrains.map((g, i) => (
-                  <circle
-                    key={i}
-                    cx={g.cx}
-                    cy={g.cy * 0.75}
-                    r={g.r}
-                    fill={PHASE_META[g.phase].color}
-                  />
-                ))}
+              <g opacity={maskOpacity} style={{ pointerEvents: editMode && !adding ? "auto" : "none" }}>
+                {visibleSegments.map((s) =>
+                  s.polygons.map((ring, ri) => (
+                    <path
+                      key={`${s.id}-${ri}`}
+                      d={ringToPath(ring, vbW, vbH)}
+                      fill={PHASE_META[s.phase].color}
+                      stroke={selectedId === s.id ? "#ffffff" : "none"}
+                      strokeWidth={selectedId === s.id ? Math.max(vbW, vbH) / 250 : 0}
+                      style={{ cursor: editMode ? "pointer" : "default" }}
+                      onClick={(e) => {
+                        if (editMode && !adding) {
+                          e.stopPropagation();
+                          setSelectedId(s.id);
+                        }
+                      }}
+                    />
+                  )),
+                )}
               </g>
             )}
 
             {/* Confidence heatmap */}
             {layers.heatmap && result && (
-              <g>
-                {result.grains.map((g, i) => (
+              <g style={{ pointerEvents: "none" }}>
+                {result.segments.map((s) =>
+                  s.polygons.map((ring, ri) => (
+                    <path
+                      key={`h-${s.id}-${ri}`}
+                      d={ringToPath(ring, vbW, vbH)}
+                      fill={s.confidence > 0.9 ? "#00E6A6" : "#F59E0B"}
+                      opacity={0.28}
+                    />
+                  )),
+                )}
+              </g>
+            )}
+
+            {/* Draft polygon being drawn */}
+            {adding && draft.length > 0 && (
+              <g style={{ pointerEvents: "none" }}>
+                <polyline
+                  points={draft.map(([x, y]) => `${x * vbW},${y * vbH}`).join(" ")}
+                  fill={PHASE_META[drawPhase].color}
+                  fillOpacity={0.3}
+                  stroke={PHASE_META[drawPhase].color}
+                  strokeWidth={Math.max(vbW, vbH) / 300}
+                />
+                {draft.map(([x, y], i) => (
                   <circle
                     key={i}
-                    cx={g.cx}
-                    cy={g.cy * 0.75}
-                    r={g.r * 1.8}
-                    fill={g.confidence > 0.9 ? "#00E6A6" : "#F59E0B"}
-                    opacity={0.18}
+                    cx={x * vbW}
+                    cy={y * vbH}
+                    r={Math.max(vbW, vbH) / 200}
+                    fill="#ffffff"
+                    stroke={PHASE_META[drawPhase].color}
+                    strokeWidth={Math.max(vbW, vbH) / 400}
                   />
                 ))}
               </g>
@@ -256,7 +410,6 @@ export function SlideViewer({
           {sample.meta}
         </div>
 
-        {/* Индикатор предобработки */}
         {status === "processing" && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="w-64 rounded-2xl bg-black/60 p-5 text-white">
@@ -304,18 +457,15 @@ export function SlideViewer({
   );
 }
 
+function ringToPath(ring: number[][], w: number, h: number): string {
+  if (ring.length === 0) return "";
+  const pts = ring.map(([x, y]) => `${(x * w).toFixed(2)},${(y * h).toFixed(2)}`);
+  return `M${pts.join("L")}Z`;
+}
+
 function clamp(v: number, min: number, max: number) {
   return Math.min(max, Math.max(min, v));
 }
-
-const placeholderGrains: { cx: number; cy: number; r: number }[] = Array.from(
-  { length: 30 },
-  (_, i) => ({
-    cx: ((i * 37) % 96) + 2,
-    cy: ((i * 53) % 92) + 2,
-    r: 1.5 + ((i * 13) % 5),
-  }),
-);
 
 function LayerChip({
   active,

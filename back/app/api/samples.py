@@ -6,7 +6,8 @@ from fastapi.responses import FileResponse
 from PIL import Image
 
 from app import config
-from app.schemas import AnalyzeOut, SampleOut
+from app.schemas import AnalysisResultOut, AnalyzeJobOut, JobStatusOut, SampleOut
+from app.services import jobs
 from app.services.analysis import analyze_sample
 
 # Гигапиксельные шлифы — снимаем защиту Pillow от «бомбы» (только для чтения размеров).
@@ -88,11 +89,23 @@ def get_sample_image(sample_id: str) -> FileResponse:
     return FileResponse(path)
 
 
-@router.post("/{sample_id}/analyze", response_model=AnalyzeOut)
-def analyze(sample_id: str) -> AnalyzeOut:
-    """Запуск анализа ранее загруженного образца."""
+@router.post("/{sample_id}/analyze", response_model=AnalyzeJobOut, status_code=202)
+def analyze(sample_id: str) -> AnalyzeJobOut:
+    """Ставит анализ образца в очередь и возвращает id фонового задания."""
     path = _stored_file(sample_id)
     if path is None:
         raise HTTPException(status_code=404, detail="Образец не найден.")
-    result = analyze_sample(path)
-    return AnalyzeOut(id=sample_id, result=result)
+    job_id = jobs.create_job()
+    jobs.submit(job_id, analyze_sample, path)
+    return AnalyzeJobOut(job_id=job_id, status="pending")
+
+
+@router.get("/{sample_id}/analyze/{job_id}", response_model=JobStatusOut)
+def analyze_status(sample_id: str, job_id: str) -> JobStatusOut:
+    """Статус задания анализа (опрашивается фронтендом до status='done')."""
+    job = jobs.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Задание не найдено.")
+    result = AnalysisResultOut(**job["result"]) if job.get("result") else None
+    return JobStatusOut(job_id=job_id, status=job["status"], result=result,
+                        error=job.get("error"))

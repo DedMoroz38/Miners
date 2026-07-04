@@ -1,5 +1,13 @@
-// Режим экспертной проверки (active learning) — заглушка UI.
-export function ExpertBar({ disabled }: { disabled: boolean }) {
+// Режим экспертной проверки: локальная правка сегментов (без записи на бэкенд).
+export function ExpertBar({
+  disabled,
+  editMode,
+  onToggleEdit,
+}: {
+  disabled: boolean;
+  editMode: boolean;
+  onToggleEdit: () => void;
+}) {
   return (
     <div className="card flex flex-wrap items-center justify-between gap-3 px-4 py-3">
       <div className="flex items-center gap-2 text-sm">
@@ -7,14 +15,22 @@ export function ExpertBar({ disabled }: { disabled: boolean }) {
           Экспертная проверка
         </span>
         <span className="text-ink-soft">
-          Отметьте ошибочные участки для дообучения (active learning)
+          {editMode
+            ? "Клик по сегменту — выбрать; цвет — сменить фазу; «+ Контур» — добавить"
+            : "Скорректируйте маску вручную перед выгрузкой отчёта"}
         </span>
       </div>
       <div className="flex gap-2">
-        <button disabled={disabled} className="btn-soft disabled:opacity-40">
-          Кисть коррекции
+        <button
+          disabled={disabled}
+          onClick={onToggleEdit}
+          className={`btn-soft disabled:opacity-40 ${
+            editMode ? "!border-brand !bg-brand/15 !text-ink" : ""
+          }`}
+        >
+          {editMode ? "Завершить правку" : "Кисть коррекции"}
         </button>
-        <button disabled={disabled} className="btn-soft disabled:opacity-40">
+        <button disabled className="btn-soft disabled:opacity-40">
           В набор дообучения
         </button>
       </div>
