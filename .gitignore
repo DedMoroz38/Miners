@@ -1,0 +1,27 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- ML training artifacts / model weights (large) ---
+*.pt
+*.pth
+*.onnx
+*.ckpt
+runs/
+
+# --- Secrets / local env ---
+.env
+*.secret_key
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+*.swp

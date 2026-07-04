@@ -1,0 +1,16 @@
+<!-- Labeling interface: TALC ZONE SEGMENTATION.
+     Draw a polygon around each talc region in the image (like the blue outline
+     in the reference). Everything not enclosed is treated as background/non-talc.
+     The `talc` value matches the class key used elsewhere in the project.
+
+     Swap PolygonLabels -> BrushLabels below if you'd rather paint pixel masks
+     (heavier to draw, but exports as true pixel masks). -->
+<View>
+  <Header value="Outline every talc zone with a polygon (close the loop). Nothing outside = not talc."/>
+  <Image name="image" value="$image" zoom="true" zoomControl="true" rotateControl="true"/>
+  <!-- pointSize="large" makes the vertices (esp. the first point you tap to close
+       the polygon) a much bigger hit target — needed for stylus/touch on tablets. -->
+  <PolygonLabels name="zone" toName="image" strokeWidth="3" pointSize="large" opacity="0.3">
+    <Label value="talc" background="#1f6fff"/>
+  </PolygonLabels>
+</View>

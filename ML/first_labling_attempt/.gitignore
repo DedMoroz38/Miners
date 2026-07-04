@@ -1,0 +1,12 @@
+# Python virtual environment
+.venv/
+# Label Studio local state (SQLite DB, uploaded media, cache)
+.label_studio/
+# Exported annotations + generated YOLO-seg dataset
+exports/
+yolo_seg/
+# The images you drop in are data, not code — keep the folder, ignore contents
+images/*
+!images/.gitkeep
+__pycache__/
+*.pyc
