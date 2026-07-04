@@ -14,6 +14,12 @@ const PHASES: Phase[] = ["common", "thin", "talc"];
 
 // Глубина истории «отмены» (Ctrl/⌘+Z). 20 шагов — разумный дефолт.
 const UNDO_LIMIT = 20;
+// Максимум одновременно рисуемых ручек-вершин (culling по вьюпорту + прореживание).
+const MAX_HANDLES = 300;
+// Цель по числу точек для кнопки «Упростить» (Douglas–Peucker).
+const SIMPLIFY_TARGET = 60;
+type Bounds = { x0: number; y0: number; x1: number; y1: number };
+const FULL_BOUNDS: Bounds = { x0: 0, y0: 0, x1: 1, y1: 1 };
 // Системная комбинация отмены: ⌘Z на macOS, Ctrl+Z в остальных ОС.
 const IS_MAC =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.userAgent);
@@ -46,6 +52,7 @@ export function SlideViewer({
 
   // --- OpenSeadragon (гигапиксельный зум через тайлы) ---
   const osdRef = useRef<HTMLDivElement>(null); // контейнер OSD
+  const canvasWrapRef = useRef<HTMLDivElement>(null); // обёртка канваса (для wheel-зума)
   const viewerRef = useRef<any>(null); // экземпляр OSD.Viewer
   const osdLibRef = useRef<any>(null); // сам модуль OpenSeadragon (для OSD.Point)
   const overlayGroupRef = useRef<SVGGElement>(null); // <g>, трансформируемая под вьюпорт
@@ -53,6 +60,7 @@ export function SlideViewer({
   const [contentSize, setContentSize] = useState<{ x: number; y: number } | null>(null);
   const [overlayScale, setOverlayScale] = useState(1); // экранных px на 1 px изображения
   const [zoomPct, setZoomPct] = useState(100);
+  const [viewBounds, setViewBounds] = useState<Bounds>(FULL_BOUNDS); // видимая область (норм. коорд.)
 
   // --- editing state ---
   const [drawPhase, setDrawPhase] = useState<Phase>("talc");
@@ -112,7 +120,9 @@ export function SlideViewer({
         element: osdRef.current,
         tileSources,
         showNavigationControl: false,
-        gestureSettingsMouse: { clickToZoom: false, dblClickToZoom: false },
+        // Свой wheel-зум (см. эффект ниже) — нативный отключаем, чтобы оверлей
+        // не мог «съесть» событие и зум колёсиком работал всегда.
+        gestureSettingsMouse: { scrollToZoom: false, clickToZoom: false, dblClickToZoom: false },
         minZoomImageRatio: 0.9,
         maxZoomPixelRatio: 5,
         visibilityRatio: 1,
@@ -141,6 +151,14 @@ export function SlideViewer({
         setOverlayScale(m.scale);
         const vp = viewer.viewport;
         setZoomPct(Math.round((vp.getZoom(true) / vp.getHomeZoom()) * 100));
+        // Видимая область в нормализованных координатах — для culling ручек-вершин.
+        const r = vp.viewportToImageRectangle(vp.getBounds(true));
+        setViewBounds({
+          x0: r.x / m.cs.x,
+          y0: r.y / m.cs.y,
+          x1: (r.x + r.width) / m.cs.x,
+          y1: (r.y + r.height) / m.cs.y,
+        });
       };
       const onOpen = () => {
         const cs = viewer.world.getItemAt(0)?.getContentSize();
@@ -182,6 +200,27 @@ export function SlideViewer({
   function resetView() {
     viewerRef.current?.viewport.goHome();
   }
+
+  // Свой зум колёсиком: зумим вьюпорт OSD к точке под курсором (нативный OSD
+  // scroll-zoom отключён, чтобы SVG-оверлей не перехватывал событие).
+  useEffect(() => {
+    const el = canvasWrapRef.current;
+    if (!el) return;
+    function onWheel(e: WheelEvent) {
+      const v = viewerRef.current;
+      const OSD = osdLibRef.current;
+      if (!v || !OSD) return;
+      e.preventDefault();
+      const rect = el!.getBoundingClientRect();
+      const ref = v.viewport.pointFromPixel(
+        new OSD.Point(e.clientX - rect.left, e.clientY - rect.top),
+      );
+      v.viewport.zoomBy(e.deltaY < 0 ? 1.2 : 1 / 1.2, ref);
+      v.viewport.applyConstraints();
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [hasImage]);
 
   // Экранные координаты -> нормализованные (0..1). В OSD-режиме через вьюпорт,
   // иначе (нет картинки) — через матрицу fallback-SVG.
@@ -314,6 +353,20 @@ export function SlideViewer({
     const polys = selectedSeg.polygons.map((rg, idx) => (idx === ri ? newRing : rg));
     commitSelectedPolys(polys);
   }
+
+  // «Упростить контур»: Douglas–Peucker до ~SIMPLIFY_TARGET точек на кольцо.
+  function simplifySelected() {
+    if (!selectedSeg) return;
+    const before = selectedSeg.polygons.reduce((n, r) => n + r.length, 0);
+    const polys = selectedSeg.polygons.map((r) => simplifyRing(r, SIMPLIFY_TARGET));
+    const after = polys.reduce((n, r) => n + r.length, 0);
+    if (after >= before) return; // упрощать нечего
+    pushHistory();
+    commitSelectedPolys(polys);
+  }
+
+  const selectedPointCount =
+    selectedSeg?.polygons.reduce((n, r) => n + r.length, 0) ?? 0;
 
   // --- undo / redo -----------------------------------------------------------
   function pushHistory() {
@@ -480,46 +533,60 @@ export function SlideViewer({
         </g>
       )}
 
-      {/* Vertex handles: reshape the selected segment (drag / insert / delete) */}
+      {/* Vertex handles: reshape the selected segment (drag / insert / delete).
+          Only vertices in the current viewport are drawn, capped at MAX_HANDLES
+          (decimated if denser) — так тысячеточечные ML-контуры не тормозят. */}
       {editMode && !adding && selectedSeg && (
         <g style={{ pointerEvents: "auto" }} onMouseDown={(e) => e.stopPropagation()}>
-          {selectedSeg.polygons.map((ring, ri) => (
-            <g key={`edit-${ri}`}>
-              {ring.map((pt, pi) => {
-                const nb = ring[(pi + 1) % ring.length];
-                return (
-                  <circle
-                    key={`mid-${pi}`}
-                    cx={((pt[0] + nb[0]) / 2) * vbW}
-                    cy={((pt[1] + nb[1]) / 2) * vbH}
-                    r={R * 0.62}
-                    fill="#ffffff"
-                    fillOpacity={0.45}
-                    stroke="#2E2E48"
-                    strokeWidth={SW}
-                    style={{ cursor: "copy" }}
-                    onClick={(e) => insertVertex(e, ri, pi)}
-                  />
-                );
-              })}
-              {ring.map((pt, pi) => (
-                <circle
-                  key={`vtx-${pi}`}
-                  cx={pt[0] * vbW}
-                  cy={pt[1] * vbH}
-                  r={R}
-                  fill={PHASE_META[selectedSeg.phase].color}
-                  stroke="#ffffff"
-                  strokeWidth={SW}
-                  style={{ cursor: "grab", touchAction: "none" }}
-                  onPointerDown={(e) => onVertexDown(e, ri, pi)}
-                  onPointerMove={onVertexMove}
-                  onPointerUp={onVertexUp}
-                  onContextMenu={(e) => deleteVertex(e, ri, pi)}
-                />
-              ))}
-            </g>
-          ))}
+          {selectedSeg.polygons.map((ring, ri) => {
+            const n = ring.length;
+            const h = visibleHandles(ring, viewBounds, MAX_HANDLES);
+            // Не терять перетаскиваемую вершину, если она ушла к краю кадра.
+            if (vDrag.current && vDrag.current.ri === ri && !h.vtx.includes(vDrag.current.pi)) {
+              h.vtx.push(vDrag.current.pi);
+            }
+            return (
+              <g key={`edit-${ri}`}>
+                {h.mids.map((pi) => {
+                  const a = ring[pi];
+                  const b = ring[(pi + 1) % n];
+                  return (
+                    <circle
+                      key={`mid-${pi}`}
+                      cx={((a[0] + b[0]) / 2) * vbW}
+                      cy={((a[1] + b[1]) / 2) * vbH}
+                      r={R * 0.62}
+                      fill="#ffffff"
+                      fillOpacity={0.45}
+                      stroke="#2E2E48"
+                      strokeWidth={SW}
+                      style={{ cursor: "copy" }}
+                      onClick={(e) => insertVertex(e, ri, pi)}
+                    />
+                  );
+                })}
+                {h.vtx.map((pi) => {
+                  const pt = ring[pi];
+                  return (
+                    <circle
+                      key={`vtx-${pi}`}
+                      cx={pt[0] * vbW}
+                      cy={pt[1] * vbH}
+                      r={R}
+                      fill={PHASE_META[selectedSeg.phase].color}
+                      stroke="#ffffff"
+                      strokeWidth={SW}
+                      style={{ cursor: "grab", touchAction: "none" }}
+                      onPointerDown={(e) => onVertexDown(e, ri, pi)}
+                      onPointerMove={onVertexMove}
+                      onPointerUp={onVertexUp}
+                      onContextMenu={(e) => deleteVertex(e, ri, pi)}
+                    />
+                  );
+                })}
+              </g>
+            );
+          })}
         </g>
       )}
     </>
@@ -605,6 +672,15 @@ export function SlideViewer({
             >
               Удалить
             </button>
+            <button
+              onClick={simplifySelected}
+              disabled={!selectedId || selectedPointCount <= SIMPLIFY_TARGET}
+              title="Упростить контур (Douglas–Peucker)"
+              className="btn-soft !py-1 text-xs disabled:opacity-40"
+            >
+              Упростить
+              {selectedId && selectedPointCount > SIMPLIFY_TARGET ? ` (${selectedPointCount})` : ""}
+            </button>
             {adding ? (
               <>
                 <button onClick={finishAdd} className="btn-primary !py-1 text-xs">
@@ -637,7 +713,7 @@ export function SlideViewer({
       )}
 
       {/* Canvas */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#0c0c14]">
+      <div ref={canvasWrapRef} className="relative aspect-[4/3] w-full overflow-hidden bg-[#0c0c14]">
         {hasImage ? (
           <>
             <div ref={osdRef} className="absolute inset-0" />
@@ -743,6 +819,78 @@ function ringCentroid(ring: number[][]): [number, number] {
     y += py;
   }
   return [x / ring.length, y / ring.length];
+}
+
+// Индексы вершин, для которых рисуем ручки: только попавшие во вьюпорт `b`,
+// и не более `cap` (иначе берём каждую k-ю). Midpoint-ы (для вставки) — только
+// между СОСЕДНИМИ показанными вершинами и только без прореживания.
+function visibleHandles(
+  ring: number[][],
+  b: Bounds,
+  cap: number,
+): { vtx: number[]; mids: number[] } {
+  const n = ring.length;
+  const m = 0.03; // небольшой запас за краем кадра
+  let idx: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const p = ring[i];
+    if (p[0] >= b.x0 - m && p[0] <= b.x1 + m && p[1] >= b.y0 - m && p[1] <= b.y1 + m) {
+      idx.push(i);
+    }
+  }
+  let step = 1;
+  if (idx.length > cap) {
+    step = Math.ceil(idx.length / cap);
+    idx = idx.filter((_, k) => k % step === 0);
+  }
+  const set = new Set(idx);
+  const mids = step === 1 ? idx.filter((i) => set.has((i + 1) % n)) : [];
+  return { vtx: idx, mids };
+}
+
+// Перпендикулярное расстояние точки p до отрезка a—b (нормализованные координаты).
+function perpDist(p: number[], a: number[], b: number[]): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+  const t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2;
+  const tc = Math.max(0, Math.min(1, t));
+  return Math.hypot(p[0] - (a[0] + tc * dx), p[1] - (a[1] + tc * dy));
+}
+
+// Douglas–Peucker для открытой ломаной.
+function rdp(points: number[][], eps: number): number[][] {
+  if (points.length < 3) return points;
+  let dmax = 0;
+  let idx = 0;
+  const a = points[0];
+  const b = points[points.length - 1];
+  for (let i = 1; i < points.length - 1; i++) {
+    const d = perpDist(points[i], a, b);
+    if (d > dmax) {
+      dmax = d;
+      idx = i;
+    }
+  }
+  if (dmax > eps) {
+    const left = rdp(points.slice(0, idx + 1), eps);
+    const right = rdp(points.slice(idx), eps);
+    return left.slice(0, -1).concat(right);
+  }
+  return [a, b];
+}
+
+// Упростить кольцо до ~targetMax точек, наращивая допуск, пока не уложимся.
+function simplifyRing(ring: number[][], targetMax: number): number[][] {
+  if (ring.length <= targetMax) return ring;
+  let eps = 0.0008;
+  let out = rdp(ring, eps);
+  while (out.length > targetMax && eps < 0.2) {
+    eps *= 1.6;
+    out = rdp(ring, eps);
+  }
+  return out.length >= 3 ? out : ring;
 }
 
 function clamp(v: number, min: number, max: number) {
