@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+build
+npm-debug.log*
+.git
+.gitignore
+.env
+.env*.local
+.devlog
+.claude
+CLAUDE.md
+task
+plan.md
