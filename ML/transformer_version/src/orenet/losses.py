@@ -1,7 +1,9 @@
-"""Segmentation loss for imbalanced phases: Dice + Focal-Tversky.
+"""Segmentation loss for imbalanced phases: Dice + Focal-Tversky + CE.
 
 Focal-Tversky (Salehi 2017; Abraham 2019) penalises missing the rare talc class
-harder than false alarms, which plain cross-entropy will not do at 42 masks.
+harder than false alarms. Region losses alone give a weak, batch-smoothed
+gradient that stalls early training, so we add a weighted cross-entropy term for
+a strong per-pixel signal (the Dice+CE recipe of nnU-Net, Isensee 2021).
 """
 
 from __future__ import annotations
@@ -23,13 +25,14 @@ class DiceFocalTversky(nn.Module):
         gamma: float = 1.3,
         dice_w: float = 0.5,
         tversky_w: float = 0.5,
+        ce_w: float = 1.0,
         class_weights: torch.Tensor | None = None,
     ) -> None:
         super().__init__()
         self.n = n_classes
         self.ignore = ignore_index
         self.alpha, self.beta, self.gamma = alpha, beta, gamma
-        self.dice_w, self.tversky_w = dice_w, tversky_w
+        self.dice_w, self.tversky_w, self.ce_w = dice_w, tversky_w, ce_w
         self.register_buffer(
             "w", class_weights if class_weights is not None else torch.ones(n_classes)
         )
@@ -58,4 +61,5 @@ class DiceFocalTversky(nn.Module):
         w = self.w.to(logits.device)
         dice_loss = ((1 - dice) * w).sum() / w.sum()
         ft_loss = (focal_tversky * w).sum() / w.sum()
-        return self.dice_w * dice_loss + self.tversky_w * ft_loss
+        ce_loss = F.cross_entropy(logits, target, weight=w, ignore_index=self.ignore)
+        return self.dice_w * dice_loss + self.tversky_w * ft_loss + self.ce_w * ce_loss

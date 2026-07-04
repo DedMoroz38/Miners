@@ -45,9 +45,9 @@ def extract_grains(
     sulf = class_map == CLASS_SULFIDE
     if sulf.sum() == 0:
         return []
-    agg = binary_closing(sulf, disk(params.aggregate_px))
+    agg = ndi.binary_closing(sulf, disk(params.aggregate_px))
     labels, n = ndi.label(agg)
-    frag_labels, _ = ndi.label(binary_closing(sulf, disk(3)))
+    frag_labels, _ = ndi.label(ndi.binary_closing(sulf, disk(3)))
 
     grains: list[Grain] = []
     for rp in regionprops(labels):
