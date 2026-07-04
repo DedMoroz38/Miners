@@ -35,3 +35,7 @@ runs/
 .DS_Store
 Thumbs.db
 *.swp
+
+# --- large fusion result dumps (kept locally, too big for GitHub) ---
+fusion_all_results/results.json
+fusion_results/results.json
