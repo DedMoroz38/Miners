@@ -541,19 +541,49 @@ export function SlideViewer({
               </g>
             )}
 
-            {/* Confidence heatmap */}
+            {/* Карта уверенности: цвета сегментов — как в классификации (фазы),
+                число по центру сегмента — уверенность модели в %. Прозрачность
+                группы завязана на слайдер «прозрачность» (цвета и числа гаснут). */}
             {layers.heatmap && result && (
-              <g style={{ pointerEvents: "none" }}>
-                {result.segments.map((s) =>
-                  s.polygons.map((ring, ri) => (
-                    <path
-                      key={`h-${s.id}-${ri}`}
-                      d={ringToPath(ring, vbW, vbH)}
-                      fill={s.confidence > 0.9 ? "#00E6A6" : "#F59E0B"}
-                      opacity={0.28}
-                    />
-                  )),
-                )}
+              <g opacity={maskOpacity} style={{ pointerEvents: "none" }}>
+                {visibleSegments.map((s) => {
+                  const big = s.polygons.reduce(
+                    (a, b) => (b.length > a.length ? b : a),
+                    s.polygons[0] ?? [],
+                  );
+                  const fs = Math.max(vbW, vbH) / 42 / zoom;
+                  return (
+                    <g key={`h-${s.id}`}>
+                      {s.polygons.map((ring, ri) => (
+                        <path
+                          key={ri}
+                          d={ringToPath(ring, vbW, vbH)}
+                          fill={PHASE_META[s.phase].color}
+                        />
+                      ))}
+                      {big.length > 0 &&
+                        (() => {
+                          const [cx, cy] = ringCentroid(big);
+                          return (
+                            <text
+                              x={cx * vbW}
+                              y={cy * vbH}
+                              fontSize={fs}
+                              fill="#ffffff"
+                              stroke="#0a0a12"
+                              strokeWidth={fs / 7}
+                              paintOrder="stroke"
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              style={{ fontWeight: 700 }}
+                            >
+                              {Math.round(s.confidence * 100)}%
+                            </text>
+                          );
+                        })()}
+                    </g>
+                  );
+                })}
               </g>
             )}
 
@@ -689,6 +719,17 @@ function ringToPath(ring: number[][], w: number, h: number): string {
   if (ring.length === 0) return "";
   const pts = ring.map(([x, y]) => `${(x * w).toFixed(2)},${(y * h).toFixed(2)}`);
   return `M${pts.join("L")}Z`;
+}
+
+// Средняя точка кольца (нормализованные координаты) — для подписи % по центру.
+function ringCentroid(ring: number[][]): [number, number] {
+  let x = 0;
+  let y = 0;
+  for (const [px, py] of ring) {
+    x += px;
+    y += py;
+  }
+  return [x / ring.length, y / ring.length];
 }
 
 function clamp(v: number, min: number, max: number) {
