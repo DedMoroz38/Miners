@@ -43,11 +43,18 @@
 
 ```bash
 cd ML/sulfide_intergrowth
-uv venv .venv && uv pip install -p .venv -e .
-source .venv/bin/activate
-cd run/pipeline
 
+# --- установка зависимостей (выбери ОДИН вариант) ---
+# вариант A (pip, работает на JupyterHub/Colab где torch уже стоит с CUDA):
+python -m pip install -r requirements.txt
+# вариант B (uv, локально с нуля): uv venv .venv && uv pip install -p .venv -e . && source .venv/bin/activate
+# если torch не установлен: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"   # должно быть True
+
+# --- пайплайн: запускать ПО ОДНОЙ команде (строки без #) ---
 # данные лежат локально в miners/data (paths.data_root); ничего скачивать не надо
+cd run/pipeline
 python build_index.py            # 1) индекс + групповой holdout        (~секунды)
 python make_pseudo_masks.py      # 2) кэш + псевдо-маски + тайлы на диск (~25-35 мин CPU)
 python train_segmenter.py        # 3) U-Net -> weights/segmenter_best.pt (~60-90 мин)
@@ -70,6 +77,10 @@ resnet34 @ 448, batch 16, AMP). Смоук на CPU:
 - `*_classmap.png` — 0=фон, 1=обычные, 2=тонкие (для дальнейшей обработки);
 - `*_metrics.csv|md` — общая доля сульфидов, доли по типам (% площади и % от
   сульфидов); при заданном `data.microns_per_pixel` — ещё и мм².
+- `*_segments.csv` — **по каждому сегменту (зерну сульфида)**: `segment_id`,
+  `class` (normal/fine), `area_px`, `area_pct`, `confidence` (уверенность
+  назначенного класса, 0.5–1.0), `conf_sulfide` (уверенность сегментации),
+  центроид `cx,cy` (+ `area_mm2` при заданном масштабе).
 
 ## Веса для инференса (`weights/`)
 
