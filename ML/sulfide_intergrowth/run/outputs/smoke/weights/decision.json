@@ -1,0 +1,8 @@
+{
+  "threshold": 0.7949999999999999,
+  "val_f1": 1.0,
+  "holdout_f1": 0.5,
+  "tile": 256,
+  "min_sulfide_frac": 0.03,
+  "backbone": "convnext_tiny"
+}
