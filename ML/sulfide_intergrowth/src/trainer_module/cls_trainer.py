@@ -3,9 +3,10 @@
 Honest metric contract: pixel GT does not exist, the only ground truth is the
 image-level label. Therefore F1 is computed at IMAGE level: tile probabilities
 are soft-voted into an image probability. The trainval images are split once
-into train/val (grouped by slide, stratified by label) — no slide leaks across
-the boundary. The decision threshold is tuned on the validation images and the
-final number is reported on the untouched slide holdout.
+into train/val by a grouped, label-stratified hold-out (grouped by slide — no
+slide leaks across the boundary; no cross-validation). The decision threshold
+is tuned on the validation images and the final number is reported on the
+untouched slide holdout.
 """
 import json
 import logging
@@ -17,7 +18,6 @@ import torch
 import torch.nn as nn
 from omegaconf import OmegaConf
 from sklearn.metrics import f1_score
-from sklearn.model_selection import StratifiedGroupKFold
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -92,14 +92,27 @@ class ClassifierTrainer:
 
     def _grouped_split(self, trainval: pd.DataFrame,
                        val_fraction: float) -> tuple[np.ndarray, np.ndarray]:
-        """One grouped, stratified train/val split (first fold of a K-fold)."""
-        per_class_groups = int(trainval.groupby("label")["group"].nunique().min())
-        n_splits = max(2, min(int(round(1.0 / max(val_fraction, 1e-6))), per_class_groups))
-        skf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True,
-                                   random_state=int(self.cfg.seed))
+        """One grouped, label-stratified train/val hold-out split.
+
+        Whole slides go to either train or val (no group leaks across the
+        boundary); roughly `val_fraction` of each class lands in val.
+        """
+        rng = np.random.default_rng(int(self.cfg.seed))
+        val_ids: list = []
+        for label in sorted(trainval["label"].unique()):
+            sub = trainval[trainval["label"] == label]
+            groups = list(sub.groupby("group").groups.items())
+            rng.shuffle(groups)
+            target, taken = int(round(len(sub) * val_fraction)), 0
+            for _, idx in groups:
+                if taken >= max(1, target):
+                    break
+                val_ids.extend(list(idx))
+                taken += len(idx)
         ids = trainval.index.to_numpy()
-        tr, va = next(iter(skf.split(ids, trainval["label"], trainval["group"])))
-        return ids[tr], ids[va]
+        val_arr = np.array(val_ids)
+        tr_ids = ids[~np.isin(ids, val_arr)]
+        return tr_ids, val_arr
 
     # ------------------------------------------------------------------ train
     def _train(self, tr_ids: np.ndarray, va_ids: np.ndarray, images: pd.DataFrame,

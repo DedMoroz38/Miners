@@ -1,0 +1,2 @@
+- paths.derived=run/outputs/smoke
+- train_segmenter.num_workers=4
