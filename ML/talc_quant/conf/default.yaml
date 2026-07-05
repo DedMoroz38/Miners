@@ -1,0 +1,86 @@
+# Talc quantification — single source of hyperparameters (OmegaConf).
+# Every script loads this; CLI overrides use dotlist (key=value).
+
+paths:
+  # Absolute or relative-to-repo-root. Resolved by config.resolve_paths().
+  miners_root: ".."                       # ML/ -> miners/ML; repo root = ../..
+  yolo_seg: "first_labling_attempt/yolo_seg"
+  part1: "../data/ore_photos_by_grade_part1"
+  part2: "../data/ore_photos_by_grade_part2"
+  panoramas: "../data/panoramas"
+  talc_zones: "../data/ore_photos_by_grade_part1/talc_altered_ores/talcification_zones"
+  build_dir: "talc_quant/data_build"      # written by scripts/build_dataset.py
+  runs_dir: "talc_quant/runs"             # checkpoints + calibration + reports
+  # Sulfide preprocessing file (single source of truth, loaded standalone).
+  sulfide_preprocess: "sulfide_intergrowth/src/data_module/preprocessing.py"
+
+data:
+  crop: 768                # patch size for training
+  patches_per_epoch: 4000  # PatchDataset length (virtual)
+  val_patches: 800
+  copy_paste_p: 0.5
+  fda_p: 0.3
+  fda_beta: 0.03           # low-freq amplitude window half-size (fraction of H)
+  gray_drop_p: 0.3         # decolorize augmentation probability
+  ab_jitter: 15            # max Lab a/b shift in augmentation
+  rare_center_p: 0.6       # probability a crop is centered on talc/gray
+  # GMM pseudo-label build
+  gmm_conf: 0.95
+  gmm_max_pixels: 200000
+  sulfide_min_l: 140       # a "sulfide" pseudo-pixel must be at least this bright
+  min_talc_polygon_px: 6   # ignore degenerate polygons
+  # Non-talc images sampled as background negatives (FP control training signal)
+  neg_per_folder: 60
+
+scale:
+  target_mag: 10.0         # canonical magnification (×10-equivalent)
+  panorama_mag: 10.0       # assumed panorama magnification (see spec open question)
+  jitter: 0.2              # ±20% scale jitter in training
+
+model:
+  track: "segformer_b2"    # segformer_b2 | segformer_b3 | dino_vitb14
+  n_classes: 5
+  pretrained: true
+  tiny: false              # random-init tiny variant for CPU smoke tests
+
+loss:
+  ce_w: 1.0
+  dice_w: 0.5
+  tversky_w: 0.5
+  area_w: 0.1              # area-consistency term weight (lambda)
+  tversky_alpha: 0.3       # FP weight (low -> punish FN/missed talc harder)
+  tversky_beta: 0.7        # FN weight
+  tversky_gamma: 1.3
+  talc_class_weight: 3.0   # extra weight on the rare talc channel in CE/region
+
+train:
+  folds: 5
+  seed: 42
+  epochs: 120
+  batch: 8
+  lr: 6.0e-5
+  weight_decay: 0.01
+  warmup_frac: 0.05
+  patience: 25             # early stop on val talc-MAE
+  amp: true
+  workers: 4
+  device: "auto"           # auto -> cuda|mps|cpu
+
+infer:
+  tile: 1024
+  overlap: 0.5
+  tta_flips: true
+  tta_scales: [1.0]        # e.g. [0.8, 1.0, 1.25] for multiscale TTA
+  batch_tiles: 8
+  seg_prob_threshold: 0.5  # fallback binarization if calibration absent
+  talc_line: 0.10          # product threshold used only for the flag / verdict text
+
+calibrate:
+  method: "theilsen"       # theilsen | adjusted_count | identity
+  temperature_init: 1.0
+  flag_band: [0.08, 0.12]  # fraction band around talc_line -> "needs geologist"
+
+report:
+  overlay_alpha: 0.5
+  talc_bgr: [255, 80, 0]   # BLUE overlay in BGR (spec: blue = talc)
+  grid_cells: 8            # local-fraction heatmap grid
