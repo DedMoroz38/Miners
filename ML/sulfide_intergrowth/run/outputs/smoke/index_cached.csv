@@ -1,0 +1,17 @@
+path,label,label_name,group,part,split,image_id,cache_image,cache_mask,sulfide_frac
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/run_of_mine/DSCN6169.JPG,0,normal,run_of_mine/dscn6169,ore_photos_by_grade_part2,trainval,0,00000.jpg,00000_mask.png,0.28248647548436157
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/run_of_mine/DSCN4490.JPG,0,normal,run_of_mine/dscn4490,ore_photos_by_grade_part2,trainval,1,00001.jpg,00001_mask.png,0.25161204167493223
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/run_of_mine/47.jpg,0,normal,run_of_mine/47,ore_photos_by_grade_part2,trainval,2,00002.jpg,00002_mask.png,0.4046521604378326
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/run_of_mine/DSCN4695.JPG,0,normal,run_of_mine/dscn4695,ore_photos_by_grade_part2,trainval,3,00003.jpg,00003_mask.png,0.36524793567744496
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/run_of_mine/DSCN4309.JPG,0,normal,run_of_mine/dscn4309,ore_photos_by_grade_part2,holdout,4,00004.jpg,00004_mask.png,0.48279782863849763
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/run_of_mine/DSCN1031.JPG,0,normal,run_of_mine/dscn1031,ore_photos_by_grade_part2,trainval,5,00005.jpg,00005_mask.png,0.5396953316140978
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/run_of_mine/59.jpg,0,normal,run_of_mine/59,ore_photos_by_grade_part2,trainval,6,00006.jpg,00006_mask.png,0.26055507947709783
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/run_of_mine/DSCN4396.JPG,0,normal,run_of_mine/dscn4396,ore_photos_by_grade_part2,holdout,7,00007.jpg,00007_mask.png,0.6577910095549825
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/fine_grained/DSCN4403.JPG,1,fine,fine_grained/dscn4403,ore_photos_by_grade_part2,trainval,8,00008.jpg,00008_mask.png,0.2347381678569067
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/fine_grained/92.JPG,1,fine,fine_grained/92,ore_photos_by_grade_part2,holdout,9,00009.jpg,00009_mask.png,0.2769299556139655
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/fine_grained/DSCN4454.JPG,1,fine,fine_grained/dscn4454,ore_photos_by_grade_part2,trainval,10,00010.jpg,00010_mask.png,0.08830816471599551
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/fine_grained/DSCN4769.JPG,1,fine,fine_grained/dscn4769,ore_photos_by_grade_part2,trainval,11,00011.jpg,00011_mask.png,0.1006718863651392
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/fine_grained/DSCN2935.JPG,1,fine,fine_grained/dscn2935,ore_photos_by_grade_part2,trainval,12,00012.jpg,00012_mask.png,0.20930117825497588
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/fine_grained/DSCN8611.JPG,1,fine,fine_grained/dscn8611,ore_photos_by_grade_part2,trainval,13,00013.jpg,00013_mask.png,0.40409114015076375
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/fine_grained/56.jpg,1,fine,fine_grained/56,ore_photos_by_grade_part2,holdout,14,00014.jpg,00014_mask.png,0.14286456000023734
+/Users/den1shh/Documents/nornickel/miners/data/ore_photos_by_grade_part2/fine_grained/70_.jpg,1,fine,fine_grained/70,ore_photos_by_grade_part2,trainval,15,00015.jpg,00015_mask.png,0.04481088817252112

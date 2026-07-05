@@ -1,0 +1,14 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4] [cursor=pointer]:
+        - paragraph [ref=e5]: Перетащите панорамный шлиф
+        - paragraph [ref=e6]: TIFF · PNG · JPEG · до 10000×10000 px
+        - generic: Выбрать файл
+      - generic [ref=e8]:
+        - heading "Очередь образцов" [level=2] [ref=e9]
+        - generic [ref=e10]: "0"
+    - paragraph [ref=e13]: Загрузите образец, чтобы начать анализ.
+    - complementary [ref=e14]:
+      - generic [ref=e15]: Нет выбранного образца.
+  - alert [ref=e16]

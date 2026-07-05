@@ -1,0 +1,4 @@
+- +input=/Users/egormaksimov/Documents/PROGRAMMING/miners/panaram/13.jpg
+- paths.weights=/Users/egormaksimov/Documents/PROGRAMMING/miners/ML/sulfide_intergrowth/weights
+- paths.outputs=/Users/egormaksimov/Documents/PROGRAMMING/miners/panaram/evaluated
+- device=mps

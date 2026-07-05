@@ -1,0 +1,7 @@
+metric,value,unit
+sulfide_share,2.06,%
+common_intergrowths,7.49,% of sulfides
+thin_intergrowths,92.51,% of sulfides
+talc_share,2.04,% of frame
+verdict,труднообогатимая,
+f1_score,0.000,

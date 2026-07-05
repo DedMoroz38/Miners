@@ -1,0 +1,10 @@
+# Talc segmenter retraining (variant B). Torch/torchvision come with ultralytics;
+# on CUDA install them from the CUDA index FIRST, e.g.:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+#   pip install -r requirements.txt
+# CPU / Apple MPS: a plain `pip install -r requirements.txt` is enough.
+ultralytics>=8.2
+opencv-python-headless>=4.8
+numpy>=1.26
+pillow>=10.0
+pyyaml>=6.0

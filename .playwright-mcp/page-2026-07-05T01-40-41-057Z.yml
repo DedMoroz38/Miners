@@ -1,0 +1,90 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e4]:
+      - img "Норникель" [ref=e5]
+      - navigation [ref=e7]:
+        - generic [ref=e8] [cursor=pointer]: Проекты
+        - generic [ref=e9] [cursor=pointer]: Образцы
+        - generic [ref=e10] [cursor=pointer]: Отчёты
+        - generic [ref=e11] [cursor=pointer]: Модель
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]:
+          - heading "Lab Console" [level=1] [ref=e15]
+          - paragraph [ref=e16]: Автоматическая классификация руд по панорамным микрофотографиям полированных шлифов — сегментация фаз, метрики и интерпретируемый вывод.
+        - button "Анализ…" [disabled] [ref=e80]: Анализ…
+      - generic [ref=e18]:
+        - complementary [ref=e19]:
+          - generic [ref=e20] [cursor=pointer]:
+            - generic [ref=e21]: ⬆
+            - paragraph [ref=e22]: Перетащите панорамный шлиф
+            - paragraph [ref=e23]: TIFF · PNG · JPEG · до 10000×10000 px
+            - generic: Выбрать файл
+          - generic [ref=e24]:
+            - generic [ref=e25]:
+              - heading "Очередь образцов" [level=2] [ref=e26]
+              - generic [ref=e27]: "4"
+            - generic [ref=e28]:
+              - button "4e2aa1261d8b Загружен · JPG · 46.3 МБ · 13330×9489 px" [ref=e75] [cursor=pointer]:
+                - generic [ref=e76]:
+                  - generic [ref=e77]: 4e2aa1261d8b
+                  - generic [ref=e78]: Загружен · JPG · 46.3 МБ · 13330×9489 px
+              - button "042 NK-1042 · Медно-никелевая руда OM · 8000×6000 px · масштаб 2.4 мкм/px" [ref=e29] [cursor=pointer]:
+                - generic [ref=e30]: "042"
+                - generic [ref=e31]:
+                  - generic [ref=e32]: NK-1042 · Медно-никелевая руда
+                  - generic [ref=e33]: OM · 8000×6000 px · масштаб 2.4 мкм/px
+              - button "188 NK-1188 · Вкрапленная руда OM · 9600×7200 px · масштаб 1.8 мкм/px" [ref=e34] [cursor=pointer]:
+                - generic [ref=e35]: "188"
+                - generic [ref=e36]:
+                  - generic [ref=e37]: NK-1188 · Вкрапленная руда
+                  - generic [ref=e38]: OM · 9600×7200 px · масштаб 1.8 мкм/px
+              - button "317 NK-2317 · Оталькованная руда OM · 10000×10000 px · масштаб 2.0 мкм/px" [ref=e39] [cursor=pointer]:
+                - generic [ref=e40]: "317"
+                - generic [ref=e41]:
+                  - generic [ref=e42]: NK-2317 · Оталькованная руда
+                  - generic [ref=e43]: OM · 10000×10000 px · масштаб 2.0 мкм/px
+        - generic [ref=e45]:
+          - generic [ref=e46]:
+            - generic [ref=e47]:
+              - button "Исходник" [ref=e48] [cursor=pointer]
+              - button "Маска фаз" [disabled] [ref=e49]
+              - button "Карта уверенности" [disabled] [ref=e50]
+            - generic [ref=e51]:
+              - generic [ref=e52]:
+                - text: Прозрачность
+                - slider "Прозрачность" [ref=e53] [cursor=pointer]: "0.6"
+              - generic [ref=e54]:
+                - button "−" [ref=e55] [cursor=pointer]
+                - generic [ref=e56]: 100%
+                - button "+" [ref=e57] [cursor=pointer]
+                - button "Сброс" [ref=e58] [cursor=pointer]
+          - generic [ref=e59]:
+            - generic [ref=e60]:
+              - img "4e2aa1261d8b" [ref=e79]
+              - img [ref=e61]
+            - generic: Загружен · JPG · 46.3 МБ · 13330×9489 px
+            - generic:
+              - generic:
+                - generic: Предобработка
+                - generic:
+                  - generic:
+                    - generic: ✓
+                    - generic: Нормализация освещения
+                  - generic:
+                    - generic: ✓
+                    - generic: Шумоподавление
+                  - generic:
+                    - generic: ✓
+                    - generic: Коррекция контраста
+                  - generic:
+                    - generic: Сегментация фаз
+        - generic [ref=e64]:
+          - generic [ref=e65]:
+            - generic [ref=e66]: Экспертная проверка
+            - generic [ref=e67]: Скорректируйте маску вручную перед выгрузкой отчёта
+          - generic [ref=e68]:
+            - button "Кисть коррекции" [disabled] [ref=e69]
+            - button "В набор дообучения" [disabled] [ref=e70]
+        - paragraph [ref=e73]: Метрики появятся после анализа образца.
+  - alert [ref=e74]

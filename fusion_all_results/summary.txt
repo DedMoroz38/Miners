@@ -1,0 +1,20 @@
+Fusion batch: 1180 images | tau=0.9 seg-conf=0.42 talc-line=10%
+
+Classifier vs folder (rows=folder, cols=predicted):
+            ordinary      hard      talc     acc
+  ordinary       531        20        14   0.940
+      hard        21       455        10   0.936
+      talc         4         1       124   0.961
+overall classifier agreement with folder: 0.941
+
+     class     n    raw%  final%   med%  talcose%  fired  segs-  unres
+  ordinary   565     9.6     6.6    4.2     15.4%    114    221     73
+      hard   486     5.2     4.5    1.4     11.3%     28     45     45
+      talc   129    25.8    25.8   23.1     99.2%      0      0      4
+
+rule fired: 142 images, 266 segments refused (kept=false)
+  by folder: ordinary: 114, hard: 28, talc: 0
+  fired on TRUE-talc images (possibly wrong prunes): 0
+unresolved conflicts (seg>10%, non-talc class, P<tau): 122
+total segments: 2481 | avg 2.1/image
+true-talc images where seg found <=10% (ignored reverse case): 17

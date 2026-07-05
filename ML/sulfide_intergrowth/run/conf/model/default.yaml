@@ -1,0 +1,13 @@
+segmenter:
+  name: resnet_unet
+  encoder: resnet34
+  pretrained: true
+  in_channels: 3
+  out_channels: 1
+
+classifier:
+  name: convnext_tile
+  backbone: convnext_small       # convnext_tiny for smoke / low VRAM
+  pretrained: true
+  num_classes: 2                 # 0 = normal, 1 = fine
+  dropout: 0.1
