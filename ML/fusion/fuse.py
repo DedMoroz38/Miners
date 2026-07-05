@@ -140,16 +140,28 @@ def classify(model, tf, classes, img_pil, device, tta=True):
 
 
 # --- Segmentation --------------------------------------------------------------
-def mask_polygons(mask, min_area_px=32):
+def mask_polygons(mask, min_area_px=32, eps_frac=0.01):
     """One clean polygon per connected blob of the mask (external contours).
 
     ultralytics' masks.xy joins disjoint blobs of one instance into a single
     self-intersecting polygon with thin bridge lines — bad for frontend drawing.
+
+    Contours are simplified with Douglas–Peucker (approxPolyDP) at
+    eps = eps_frac * perimeter so jagged pixel boundaries collapse to a handful
+    of vertices. Mirrors ML/merge/merge_phases.py:mask_polygons.
     """
     contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL,
                                    cv2.CHAIN_APPROX_SIMPLE)
-    return [c.reshape(-1, 2) for c in contours
-            if len(c) >= 3 and cv2.contourArea(c) >= min_area_px]
+    out = []
+    for c in contours:
+        if len(c) < 3 or cv2.contourArea(c) < min_area_px:
+            continue
+        eps = eps_frac * cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, eps, True) if eps > 0 else c
+        if len(approx) < 3:  # over-collapsed a valid blob — keep the raw ring
+            approx = c
+        out.append(approx.reshape(-1, 2))
+    return out
 
 
 def segment(seg_model, img_bgr, conf, imgsz, device):

@@ -47,15 +47,28 @@ COLOR_BGR = {COMMON: (94, 197, 34), THIN: (68, 68, 239), TALC: (246, 130, 59)}
 
 
 # --- geometry ----------------------------------------------------------------
-def mask_polygons(mask, min_area_px=32):
+def mask_polygons(mask, min_area_px=32, eps_frac=0.01):
     """One external-contour polygon per connected blob of `mask` (bool/uint8).
 
+    Contours are simplified with Douglas–Peucker (approxPolyDP) at
+    eps = eps_frac * perimeter, so a jagged pixel-boundary grain collapses from
+    hundreds of vertices to a handful. On a panorama with thousands of sulfide
+    grains this is what keeps the web payload small and the SVG viewer (and its
+    per-vertex edit handles) responsive — the shape stays recognizable.
     Mirrors ML/fusion/fuse.py:mask_polygons so talc/sulfide vectorize identically.
     """
     contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL,
                                    cv2.CHAIN_APPROX_SIMPLE)
-    return [c.reshape(-1, 2) for c in contours
-            if len(c) >= 3 and cv2.contourArea(c) >= min_area_px]
+    out = []
+    for c in contours:
+        if len(c) < 3 or cv2.contourArea(c) < min_area_px:
+            continue
+        eps = eps_frac * cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, eps, True) if eps > 0 else c
+        if len(approx) < 3:  # over-collapsed a valid blob — keep the raw ring
+            approx = c
+        out.append(approx.reshape(-1, 2))
+    return out
 
 
 # --- confidence sources ------------------------------------------------------

@@ -37,8 +37,12 @@ def _pipeline_python(env_name: str, venv_python: Path) -> str:
 
 TALC_PYTHON = _pipeline_python(
     "TALC_PYTHON", ML_ROOT / "first_labling_attempt" / ".venv" / "bin" / "python")
-SULFIDE_PYTHON = _pipeline_python(
-    "SULFIDE_PYTHON", ML_ROOT / "sulfide_intergrowth" / ".venv" / "bin" / "python")
+# У сульфидного конвейера может не быть собственного venv (локальная разработка):
+# тогда используем talc-venv — в нём есть torch/torchvision + hydra/omegaconf,
+# и сульфидный infer_panorama.py в нём проверенно работает.
+_sulfide_venv = ML_ROOT / "sulfide_intergrowth" / ".venv" / "bin" / "python"
+SULFIDE_PYTHON = os.environ.get("SULFIDE_PYTHON") or (
+    str(_sulfide_venv) if _sulfide_venv.is_file() else TALC_PYTHON)
 # merge требует только numpy+opencv — по умолчанию берём тот же python, что и talc.
 MERGE_PYTHON = os.environ.get("MERGE_PYTHON") or TALC_PYTHON
 
