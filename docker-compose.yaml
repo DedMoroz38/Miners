@@ -35,6 +35,9 @@ services:
       - SULFIDE_PYTHON=/ml/sulfide_intergrowth/.venv/bin/python
       - MERGE_PYTHON=/ml/first_labling_attempt/.venv/bin/python
       - SULFIDE_WEIGHTS_DIR=/ml/sulfide_intergrowth/weights
+      # Талько-веса варианта B (канонический профиль). Если файла нет, бэкенд
+      # не передаёт аргумент и talc_infer откатывается на сырой бейзлайн.
+      - TALC_SEG_WEIGHTS=/ml/talc_seg_normalized/weights/talc_seg_best.pt
       - ML_STEP_TIMEOUT=1800
     restart: unless-stopped
 
