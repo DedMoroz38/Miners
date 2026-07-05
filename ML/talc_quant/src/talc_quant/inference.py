@@ -48,8 +48,8 @@ def load_models(ckpt_paths: list[Path], device: torch.device) -> list[torch.nn.M
         model.load_state_dict(state["model"])
         model.eval().to(device)
         models.append(model)
-        logger.info("loaded %s (%s, val_mae=%.4f)", p.name, track,
-                    state.get("val_mae", float("nan")))
+        logger.info("loaded %s (%s, test_mae=%.4f)", p.name, track,
+                    state.get("test_mae", float("nan")))
     return models
 
 

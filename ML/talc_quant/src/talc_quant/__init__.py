@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from .config import Config, load_config
 from .constants import CLASS_TALC, NUM_CLASSES, VALID_CLASSES
-from .folds import assign_folds, specimen_id, specimen_map
+from .folds import assign_split, specimen_id, specimen_map
 from .scale import parse_magnification, scale_factor
 from .seed import set_seed
 
@@ -16,7 +16,7 @@ __all__ = [
     "Config",
     "load_config",
     "set_seed",
-    "assign_folds",
+    "assign_split",
     "specimen_id",
     "specimen_map",
     "parse_magnification",

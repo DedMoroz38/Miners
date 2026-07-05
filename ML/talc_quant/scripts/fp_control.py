@@ -1,9 +1,8 @@
 """False-positive control on non-talc sorts (spec §3.4).
 
 The ±3% target is meaningless if the model paints talc on ordinary/refractory
-ores. This predicts the talc fraction on the negative images in the corpus (their
-folds' own models, OOF) and reports the distribution — it should sit near 0 with
-P95 ≤ 3%.
+ores. This predicts the talc fraction on the held-out TEST negative images and
+reports the distribution — it should sit near 0 with P95 ≤ 3%.
 
     python scripts/fp_control.py --track segformer_b2
 """
@@ -17,7 +16,7 @@ import cv2
 import numpy as np
 
 from talc_quant.config import load_config
-from talc_quant.dataset import items_for_folds, load_manifest
+from talc_quant.dataset import items_for_split, load_manifest
 from talc_quant.engine import resolve_device
 from talc_quant.inference import load_models, predict
 from talc_quant.quantify import Calib, soft_fraction
@@ -39,22 +38,22 @@ def main() -> None:
     calib_path = run_dir / "calibration.json"
     calib = Calib.load(calib_path) if calib_path.exists() else Calib()
 
+    ckpt = run_dir / "best.pt"
+    if not ckpt.exists():
+        raise SystemExit(f"no checkpoint at {ckpt} — train first")
+    models = load_models([ckpt], device)
+
     manifest = load_manifest(cfg.paths.build_dir)
     fracs_by_sort: dict[str, list[float]] = {}
-    for f in range(cfg.train.folds):
-        ckpt = run_dir / f"fold{f}_best.pt"
-        if not ckpt.exists():
+    negs = [r for r in items_for_split(manifest, "test") if not r["has_talc"]]
+    for rec in negs:
+        bgr = cv2.imread(str(cfg.paths.build_dir / rec["image"]))
+        if bgr is None:
             continue
-        models = load_models([ckpt], device)
-        negs = [r for r in items_for_folds(manifest, {f}) if not r["has_talc"]]
-        for rec in negs:
-            bgr = cv2.imread(str(cfg.paths.build_dir / rec["image"]))
-            if bgr is None:
-                continue
-            res = predict(bgr, models, cfg, device, is_panorama=False,
-                          preprocess=False)
-            raw = soft_fraction(res.talc_prob, res.valid, calib.temperature)
-            fracs_by_sort.setdefault(rec["sort"], []).append(calib.apply(raw))
+        res = predict(bgr, models, cfg, device, is_panorama=False,
+                      preprocess=False)
+        raw = soft_fraction(res.talc_prob, res.valid, calib.temperature)
+        fracs_by_sort.setdefault(rec["sort"], []).append(calib.apply(raw))
 
     print(f"\n=== {cfg.model.track}: talc fraction on NON-talc sorts (should ~0) ===")
     all_fr: list[float] = []

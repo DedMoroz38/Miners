@@ -31,6 +31,7 @@ data:
   min_talc_polygon_px: 6   # ignore degenerate polygons
   # Non-talc images sampled as background negatives (FP control training signal)
   neg_per_folder: 60
+  test_frac: 0.2           # grouped train/test split (by specimen); no k-fold
 
 scale:
   target_mag: 10.0         # canonical magnification (×10-equivalent)
@@ -54,16 +55,15 @@ loss:
   talc_class_weight: 3.0   # extra weight on the rare talc channel in CE/region
 
 train:
-  folds: 5
   seed: 42
   epochs: 120
   batch: 8
   lr: 6.0e-5
   weight_decay: 0.01
   warmup_frac: 0.05
-  patience: 25             # early stop on val talc-MAE
+  patience: 25             # early stop on test talc-MAE
   amp: true
-  workers: 4
+  workers: 0              # dataloader workers (0 = main process)
   device: "auto"           # auto -> cuda|mps|cpu
 
 infer:

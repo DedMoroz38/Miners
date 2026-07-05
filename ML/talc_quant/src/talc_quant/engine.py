@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 from .config import Config
 from .constants import (CLASS_TALC, IGNORE_INDEX, IMAGENET_MEAN, IMAGENET_STD,
                         VALID_CLASSES)
-from .dataset import PatchDataset, items_for_folds, load_manifest
+from .dataset import PatchDataset, items_for_split, load_manifest
 from .losses import SegLoss
 from .models import build_model
 
@@ -95,18 +95,21 @@ def val_talc_mae(model: torch.nn.Module, val_items: list[dict], cfg: Config,
     return float(np.mean(errs)) if errs else float("nan")
 
 
-def train_fold(cfg: Config, fold: int, out_dir: Path,
-               max_steps: int | None = None) -> Path:
-    """Train on all folds except `fold`, validate on `fold`. Returns best ckpt."""
+def train_model(cfg: Config, out_dir: Path,
+                max_steps: int | None = None) -> Path:
+    """Train on the TRAIN split, early-stop on the TEST split's talc-MAE.
+    Returns the best checkpoint path (out_dir/best.pt)."""
     device = resolve_device(cfg.train.device)
-    logger.info("fold %d | device %s | track %s", fold, device, cfg.model.track)
+    logger.info("device %s | track %s", device, cfg.model.track)
 
     manifest = load_manifest(cfg.paths.build_dir)
-    train_folds = {f for f in range(cfg.train.folds) if f != fold}
-    train_items = items_for_folds(manifest, train_folds)
-    val_items = items_for_folds(manifest, {fold})
+    train_items = items_for_split(manifest, "train")
+    val_items = items_for_split(manifest, "test")
+    logger.info("train items %d | test items %d (%d with talc)",
+                len(train_items), len(val_items),
+                sum(r["has_talc"] for r in val_items))
 
-    ds = PatchDataset(train_items, cfg, train=True, seed=cfg.train.seed + fold)
+    ds = PatchDataset(train_items, cfg, train=True, seed=cfg.train.seed)
     dl = DataLoader(ds, batch_size=cfg.train.batch, num_workers=cfg.train.workers,
                     pin_memory=(device.type == "cuda"), drop_last=True)
 
@@ -125,9 +128,8 @@ def train_fold(cfg: Config, fold: int, out_dir: Path,
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    best_ckpt = out_dir / f"fold{fold}_best.pt"
+    best_ckpt = out_dir / "best.pt"
     best_mae, since_best, step = float("inf"), 0, 0
-    epoch = 0
     model.train()
     dl_iter = iter(dl)
     while step < total:
@@ -136,7 +138,6 @@ def train_fold(cfg: Config, fold: int, out_dir: Path,
         except StopIteration:
             dl_iter = iter(dl)
             batch = next(dl_iter)
-            epoch += 1
         img = batch["image"].to(device)
         lab = batch["label"].to(device)
         opt.zero_grad(set_to_none=True)
@@ -151,20 +152,20 @@ def train_fold(cfg: Config, fold: int, out_dir: Path,
 
         if step % steps_per_epoch == 0:
             mae = val_talc_mae(model, val_items, cfg, device)
-            logger.info("fold %d step %d/%d | loss %.4f | val talc-MAE %.4f",
-                        fold, step, total, float(loss.detach()), mae)
+            logger.info("step %d/%d | loss %.4f | test talc-MAE %.4f",
+                        step, total, float(loss.detach()), mae)
             model.train()
             if mae < best_mae:
                 best_mae, since_best = mae, 0
                 torch.save({"model": model.state_dict(), "cfg_track": cfg.model.track,
-                            "fold": fold, "val_mae": mae}, best_ckpt)
+                            "test_mae": mae}, best_ckpt)
             else:
                 since_best += 1
                 if since_best >= cfg.train.patience:
                     logger.info("early stop at step %d (best MAE %.4f)", step, best_mae)
                     break
-    if not best_ckpt.exists():  # e.g. no val talc images -> save last
+    if not best_ckpt.exists():  # e.g. no test talc images -> save last
         torch.save({"model": model.state_dict(), "cfg_track": cfg.model.track,
-                    "fold": fold, "val_mae": best_mae}, best_ckpt)
-    logger.info("fold %d done. best val talc-MAE %.4f -> %s", fold, best_mae, best_ckpt)
+                    "test_mae": best_mae}, best_ckpt)
+    logger.info("done. best test talc-MAE %.4f -> %s", best_mae, best_ckpt)
     return best_ckpt

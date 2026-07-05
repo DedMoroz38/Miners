@@ -29,8 +29,9 @@ def load_manifest(build_dir: Path) -> list[dict]:
     return json.loads((build_dir / "manifest.json").read_text())
 
 
-def items_for_folds(manifest: list[dict], folds: set[int]) -> list[dict]:
-    return [r for r in manifest if r["fold"] in folds]
+def items_for_split(manifest: list[dict], split: str) -> list[dict]:
+    """Records in a given split ("train" or "test")."""
+    return [r for r in manifest if r["split"] == split]
 
 
 class PatchDataset(Dataset):

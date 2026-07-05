@@ -3,8 +3,8 @@
     python scripts/infer.py --image /abs/panorama.jpg --out job/talc --track segformer_b2
     python scripts/infer.py --image /abs/field.jpg --out job/talc --um-per-px 0.5
 
-Loads every foldN_best.pt for the track (ensemble) + calibration.json (if present)
-and writes talc_mask.png, overlay.png, heatmap.png, entropy.png, talc.json.
+Loads runs/<track>/best.pt + calibration.json (if present) and writes
+talc_mask.png, overlay.png, heatmap.png, entropy.png, talc.json.
 """
 from __future__ import annotations
 
@@ -41,10 +41,10 @@ def main() -> None:
     device = resolve_device(cfg.train.device)
 
     run_dir = cfg.paths.runs_dir / cfg.model.track
-    ckpts = sorted(run_dir.glob("fold*_best.pt"))
-    if not ckpts:
-        raise SystemExit(f"no checkpoints in {run_dir}; train first")
-    models = load_models(ckpts, device)
+    ckpt = run_dir / "best.pt"
+    if not ckpt.exists():
+        raise SystemExit(f"no checkpoint at {ckpt}; train first")
+    models = load_models([ckpt], device)
 
     calib_path = run_dir / "calibration.json"
     calib = Calib.load(calib_path) if calib_path.exists() else Calib()

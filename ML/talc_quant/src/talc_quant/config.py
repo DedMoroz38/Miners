@@ -48,6 +48,7 @@ class DataCfg:
     sulfide_min_l: int
     min_talc_polygon_px: int
     neg_per_folder: int
+    test_frac: float
 
 
 @dataclass(frozen=True)
@@ -79,7 +80,6 @@ class LossCfg:
 
 @dataclass(frozen=True)
 class TrainCfg:
-    folds: int
     seed: int
     epochs: int
     batch: int

@@ -22,11 +22,12 @@ from pathlib import Path
 import cv2
 import numpy as np
 from sklearn.mixture import GaussianMixture
+from tqdm.auto import tqdm
 
 from .config import Config
 from .constants import (CLASS_BACKGROUND, CLASS_GRAY, CLASS_MATRIX,
                         CLASS_SULFIDE, CLASS_TALC, IGNORE_INDEX, IMAGE_EXTS)
-from .folds import assign_folds
+from .folds import assign_split
 from .preprocess import CanonicalPreprocessor, background_mask
 from .scale import scale_factor
 
@@ -41,7 +42,7 @@ class ItemRecord:
     has_talc: bool
     sort: str         # talc | ordinary | fine | negative
     source: str       # yolo_seg | part1 | part2
-    fold: int
+    split: str        # "train" | "test"
 
 
 def gmm_pseudolabels(bgr: np.ndarray, cfg: Config) -> np.ndarray:
@@ -110,13 +111,43 @@ def _iter_folder_images(folder: Path) -> list[Path]:
                   if p.suffix.lower() in IMAGE_EXTS and p.is_file())
 
 
+def validate_inputs(cfg: Config) -> None:
+    """Fail LOUD and EARLY if the corpus paths are wrong (e.g. different repo
+    layout on a GPU box) instead of silently producing an empty build."""
+    checks = {
+        "sulfide_preprocess (file)": cfg.paths.sulfide_preprocess.is_file(),
+        "yolo_seg/images/train": (cfg.paths.yolo_seg / "images" / "train").is_dir(),
+        "yolo_seg/labels/train": (cfg.paths.yolo_seg / "labels" / "train").is_dir(),
+        "part1": cfg.paths.part1.is_dir(),
+        "part2": cfg.paths.part2.is_dir(),
+        "panoramas": cfg.paths.panoramas.is_dir(),
+    }
+    n_talc = sum(len(_iter_folder_images(cfg.paths.yolo_seg / "images" / s))
+                 for s in ("train", "val"))
+    logger.info("input check (paths resolved against %s):", cfg.paths.yolo_seg.parent)
+    for name, ok in checks.items():
+        logger.info("  [%s] %s", "OK" if ok else "MISSING", name)
+    logger.info("  talc images found: %d", n_talc)
+    missing = [n for n, ok in checks.items() if not ok]
+    if missing or n_talc == 0:
+        raise FileNotFoundError(
+            "build aborted — inputs not found: "
+            + (", ".join(missing) if missing else "0 talc images in yolo_seg") +
+            f"\nResolved yolo_seg = {cfg.paths.yolo_seg}\n"
+            "Fix paths.* in conf/default.yaml or pass overrides "
+            "(e.g. paths.miners_root=...) so they point at the real data on this box."
+        )
+
+
 def build_dataset(cfg: Config) -> list[ItemRecord]:
     """Full build. Returns the manifest (also written to disk)."""
+    validate_inputs(cfg)
     pp = CanonicalPreprocessor(cfg.paths.sulfide_preprocess)
     out = cfg.paths.build_dir
     (out / "images").mkdir(parents=True, exist_ok=True)
     (out / "labels").mkdir(parents=True, exist_ok=True)
     (out / "fda_bank").mkdir(parents=True, exist_ok=True)
+    logger.info("writing build to %s", out)
 
     records: list[ItemRecord] = []
 
@@ -125,7 +156,8 @@ def build_dataset(cfg: Config) -> list[ItemRecord]:
     for split in ("train", "val"):
         img_dir = cfg.paths.yolo_seg / "images" / split
         lbl_dir = cfg.paths.yolo_seg / "labels" / split
-        for img_path in _iter_folder_images(img_dir):
+        for img_path in tqdm(_iter_folder_images(img_dir),
+                             desc=f"talc/{split}", unit="img"):
             bgr = cv2.imread(str(img_path))
             if bgr is None:
                 continue
@@ -140,7 +172,7 @@ def build_dataset(cfg: Config) -> list[ItemRecord]:
             cv2.imwrite(str(out / "labels" / f"{stem}.png"), label)
             records.append(ItemRecord(stem, f"images/{stem}.jpg",
                                       f"labels/{stem}.png", True, "talc",
-                                      "yolo_seg", -1))
+                                      "yolo_seg", ""))
             talc_stems.append(stem)
 
     # --- negatives (non-talc sorts) for FP-control training signal ---
@@ -155,7 +187,7 @@ def build_dataset(cfg: Config) -> list[ItemRecord]:
             sort = "fine" if ("refractory" in folder.name or "fine" in folder.name) \
                 else "ordinary"
             imgs = _iter_folder_images(folder)[: cfg.data.neg_per_folder]
-            for img_path in imgs:
+            for img_path in tqdm(imgs, desc=f"neg/{folder.name}", unit="img"):
                 bgr = cv2.imread(str(img_path))
                 if bgr is None:
                     continue
@@ -167,24 +199,26 @@ def build_dataset(cfg: Config) -> list[ItemRecord]:
                 cv2.imwrite(str(out / "labels" / f"{stem}.png"), label)
                 records.append(ItemRecord(stem, f"images/{stem}.jpg",
                                           f"labels/{stem}.png", False, sort,
-                                          source, -1))
+                                          source, ""))
 
     # --- FDA bank: panorama tiles in canonical profile ---
     _build_fda_bank(cfg, pp, out)
 
-    # --- grouped folds over talc images; negatives round-robined in ---
-    folds = assign_folds(talc_stems, k=cfg.train.folds, seed=cfg.train.seed)
+    # --- grouped train/test split (no k-fold); talc and negatives split
+    # separately so BOTH appear in test (talc for MAE, negatives for FP). ---
     neg_stems = [r.stem for r in records if not r.has_talc]
-    for i, stem in enumerate(neg_stems):
-        folds[stem] = i % cfg.train.folds
+    split = assign_split(talc_stems, cfg.data.test_frac, cfg.train.seed)
+    split.update(assign_split(neg_stems, cfg.data.test_frac, cfg.train.seed + 1))
     for r in records:
-        r.fold = folds[r.stem]
+        r.split = split[r.stem]
 
+    n_test = sum(v == "test" for v in split.values())
     (out / "manifest.json").write_text(
         json.dumps([asdict(r) for r in records], ensure_ascii=False, indent=2))
-    (out / "folds.json").write_text(json.dumps(folds, indent=2))
-    logger.info("built %d items (%d talc, %d neg) -> %s",
-                len(records), len(talc_stems), len(neg_stems), out)
+    (out / "split.json").write_text(json.dumps(split, indent=2))
+    logger.info("built %d items (%d talc, %d neg) | split: %d train / %d test -> %s",
+                len(records), len(talc_stems), len(neg_stems),
+                len(records) - n_test, n_test, out)
     return records
 
 

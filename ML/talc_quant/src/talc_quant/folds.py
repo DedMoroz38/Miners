@@ -65,26 +65,39 @@ def specimen_id(name: str, names: list[str] | None = None) -> str:
     return specimen_map(names)[name]
 
 
-def assign_folds(names: list[str], k: int = 5, seed: int = 42) -> dict[str, int]:
-    """Assign each name to one of k folds, balanced by image count, grouped by
-    specimen. Deterministic given (names, k, seed)."""
+def assign_split(names: list[str], test_frac: float = 0.2,
+                 seed: int = 42) -> dict[str, str]:
+    """Grouped train/test split (no k-fold): every specimen goes entirely to
+    "train" or "test", and test holds ≈ test_frac of the IMAGES. Deterministic
+    given (names, test_frac, seed). A specimen never straddles the split."""
     import random
 
     spec = specimen_map(names)
-    # images per specimen
     counts: dict[str, int] = {}
     for n in names:
         counts[spec[n]] = counts.get(spec[n], 0) + 1
 
+    total = len(names)
+    target_test = max(1, round(test_frac * total)) if total else 0
+    cap = max(1, round(target_test * 1.5))           # never let test exceed this
+
     specimens = sorted(counts)                       # deterministic order
     rng = random.Random(seed)
     rng.shuffle(specimens)
-    # greedy: put the next specimen into the currently-smallest fold
-    fold_load = [0] * k
-    spec_fold: dict[str, int] = {}
-    for s in sorted(specimens, key=lambda x: -counts[x]):  # largest first
-        f = min(range(k), key=lambda i: fold_load[i])
-        spec_fold[s] = f
-        fold_load[f] += counts[s]
+    # Greedily fill test in shuffled order, skipping any specimen that would push
+    # test past the cap. A single dominant specimen (e.g. a big DSCN cluster that
+    # is ~40% of the data) is thus skipped and stays in TRAIN rather than
+    # swallowing the whole test set.
+    test_specs: set[str] = set()
+    filled = 0
+    for s in specimens:
+        if filled >= target_test:
+            break
+        if filled + counts[s] <= cap:
+            test_specs.add(s)
+            filled += counts[s]
+    if not test_specs and specimens:                 # guarantee a non-empty test
+        smallest = min(specimens, key=lambda x: counts[x])
+        test_specs.add(smallest)
 
-    return {n: spec_fold[spec[n]] for n in names}
+    return {n: ("test" if spec[n] in test_specs else "train") for n in names}

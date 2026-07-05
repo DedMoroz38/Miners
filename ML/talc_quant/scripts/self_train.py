@@ -1,6 +1,6 @@
 """Optional Stage-3 self-training (spec §5.3) — OFF by default in the workflow.
 
-Uses the fold ensemble as a teacher to pseudo-label high-confidence talc pixels
+Uses the trained model as a teacher to pseudo-label high-confidence talc pixels
 on part2 talc-altered images + panorama tiles, then appends them to the corpus
 for a low-LR fine-tune. Guards: only very-confident pixels kept, sanity-filter by
 folder sort (a non-talc image predicted >10% talc is quarantined, not learned).
@@ -50,10 +50,10 @@ def main() -> None:
     cfg = load_config(overrides=overrides)
     device = resolve_device(cfg.train.device)
     run_dir = cfg.paths.runs_dir / cfg.model.track
-    ckpts = sorted(run_dir.glob("fold*_best.pt"))
-    if not ckpts:
-        raise SystemExit("train folds first")
-    models = load_models(ckpts, device)
+    ckpt = run_dir / "best.pt"
+    if not ckpt.exists():
+        raise SystemExit("train the model first")
+    models = load_models([ckpt], device)
     pp = CanonicalPreprocessor(cfg.paths.sulfide_preprocess)
 
     out = cfg.paths.build_dir / f"pseudo_round{args.round}"
@@ -86,7 +86,7 @@ def main() -> None:
         records.append({"stem": stem, "image": f"pseudo_round{args.round}/images/{stem}.jpg",
                         "label": f"pseudo_round{args.round}/labels/{stem}.png",
                         "has_talc": True, "sort": "pseudo", "source": "self_train",
-                        "fold": kept % cfg.train.folds})
+                        "split": "train"})   # pseudo-labels only augment training
         kept += 1
 
     (out / "pseudo_manifest.json").write_text(json.dumps(records, indent=2))
