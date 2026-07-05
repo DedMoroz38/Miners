@@ -42,8 +42,13 @@ def analyze_sample(image_path: Path) -> dict:
         talc_dir = tmp / "talc"
 
         # 1. talc (classifier-gated YOLO-seg fusion) -> talc.json + talc_mask.png
-        _run([config.TALC_PYTHON, config.TALC_SCRIPT,
-              "--image", str(image_path), "--out", str(talc_dir)])
+        # Панорамы talc_infer тайлит сам (авто по размеру); связка
+        # профиль<->веса тоже у него (--profile auto).
+        talc_cmd = [config.TALC_PYTHON, config.TALC_SCRIPT,
+                    "--image", str(image_path), "--out", str(talc_dir)]
+        if config.TALC_SEG_WEIGHTS:
+            talc_cmd += ["--seg-weights", config.TALC_SEG_WEIGHTS]
+        _run(talc_cmd)
         talc_mask = talc_dir / "talc_mask.png"
         talc_json = talc_dir / "talc.json"
 

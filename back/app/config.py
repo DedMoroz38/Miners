@@ -54,6 +54,18 @@ MERGE_SCRIPT = str(ML_ROOT / "merge" / "merge_phases.py")
 SULFIDE_WEIGHTS_DIR = os.environ.get("SULFIDE_WEIGHTS_DIR") or str(
     ML_ROOT / "sulfide_intergrowth" / "weights")
 
+# Веса талько-сегментера (вариант B — обучен в каноническом сульфидном профиле,
+# см. ML/talc_seg_normalized/weights/README.md). Приоритет: env -> файл весов
+# варианта B (если выложен) -> None (тогда talc_infer сам берёт сырой бейзлайн
+# и, по связке профиль<->веса, НЕ нормализует вход).
+_TALC_NORM_WEIGHTS = ML_ROOT / "talc_seg_normalized" / "weights" / "talc_seg_best.pt"
+_talc_env = os.environ.get("TALC_SEG_WEIGHTS")
+# Передаём --seg-weights только если файл реально существует: иначе talc_infer
+# аварийно выйдет, а без аргумента он мягко откатится на сырой бейзлайн.
+TALC_SEG_WEIGHTS = next(
+    (str(p) for p in (_talc_env, _TALC_NORM_WEIGHTS) if p and Path(p).is_file()),
+    None)
+
 
 def sulfide_available() -> bool:
     """Сульфидный шаг запускается только если есть его веса (иначе — talc-only).

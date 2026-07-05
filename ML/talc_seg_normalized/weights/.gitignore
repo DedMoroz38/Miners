@@ -1,0 +1,3 @@
+# Trained weights are large artifacts — loaded separately, never committed.
+*.pt
+!README.md

@@ -1,0 +1,6 @@
+# Generated artifacts — regenerate with build_dataset.py / train.py.
+dataset_norm/
+runs/
+yolo11*.pt
+*.pyc
+__pycache__/

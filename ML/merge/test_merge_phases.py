@@ -146,6 +146,34 @@ def run():
     check("fully-talc: verdict оталькованная", p_d["verdict"] == "оталькованная")
     check("fully-talc: talcShare ~100", abs(p_d["talcShare"] - 100.0) < TOL)
 
+    # (e) tiled talc mask (panorama path): one grain cut by a tile seam arrives
+    # as TWO overlapping instance records, but the union mask is OR-stitched.
+    # The merge must re-extract it as ONE segment with no double-counted area.
+    seam_x = 150                       # imaginary tile boundary
+    grain = (60, 100, 130, 190)        # y0, y1, x0, x1 — spans the seam
+    tiled_mask = np.zeros((H, W), np.uint8)
+    tiled_mask[grain[0]:grain[1], grain[2]:grain[3]] = 255
+    # two per-tile records overlapping across the seam (like run_panorama emits)
+    tiled_json = {
+        "image": "tiled.png", "width": W, "height": H,
+        "segments": [
+            {"confidence": 0.7, "kept": True,
+             "polygons_norm": [_norm_ring(grain[2], grain[0], seam_x + 10, grain[1])]},
+            {"confidence": 0.6, "kept": True,
+             "polygons_norm": [_norm_ring(seam_x - 10, grain[0], grain[3], grain[1])]},
+        ],
+    }
+    p_e, m_e = M.build_payload(empty_cm, tiled_mask, tiled_json, None)
+    talc_e = [s for s in p_e["segments"] if s["phase"] == "talc"]
+    grain_area = (grain[1] - grain[0]) * (grain[3] - grain[2])
+    check("tiled: seam-cut grain re-merges into ONE segment", len(talc_e) == 1)
+    check("tiled: area counted once (union, not sum of instances)",
+          talc_e and abs(talc_e[0]["areaFrac"] - grain_area / (H * W)) < 1e-4)
+    check("tiled: talcShare from union mask",
+          abs(p_e["talcShare"] - 100 * grain_area / (H * W)) < TOL)
+    check("tiled: confidence = max over overlapping instances on the seam",
+          talc_e and 0.6 <= talc_e[0]["confidence"] <= 0.7)
+
     return failures
 
 

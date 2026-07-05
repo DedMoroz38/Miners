@@ -1,0 +1,4 @@
+{
+  "threshold": 0.5,
+  "note": "neutral default — no tuned decision.json shipped with the weights; fine-vs-normal cut at P(fine)=0.5"
+}
