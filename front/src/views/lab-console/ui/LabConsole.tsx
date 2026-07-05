@@ -9,7 +9,6 @@ import { UploadZone } from "@/features/upload-sample";
 import { SampleQueue } from "@/widgets/sample-queue";
 import { SlideViewer } from "@/widgets/slide-viewer";
 import { MetricsPanel } from "@/widgets/metrics-panel";
-import { ExpertBar } from "@/widgets/expert-bar";
 import { Logo } from "@/shared/ui/logo";
 import { Spinner } from "@/shared/ui/spinner";
 
@@ -84,9 +83,9 @@ export function LabConsole() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[300px_1fr_360px] lg:grid-rows-[auto_auto]">
-          {/* Left: upload + queue — только ряд 1, низ вровень с вьюером */}
-          <aside className="flex flex-col gap-5 lg:col-start-1 lg:row-start-1">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[300px_1fr_360px]">
+          {/* Left: upload + queue */}
+          <aside className="flex flex-col gap-5">
             <UploadZone onUpload={onUpload} />
             <SampleQueue
               samples={samples}
@@ -95,8 +94,8 @@ export function LabConsole() {
             />
           </aside>
 
-          {/* Center: viewer (ряд 1) */}
-          <div className="lg:col-start-2 lg:row-start-1">
+          {/* Center: viewer */}
+          <div>
             <SlideViewer
               sample={active}
               result={result}
@@ -104,6 +103,7 @@ export function LabConsole() {
               status={status}
               step={step}
               editMode={editMode}
+              onToggleEdit={() => setEditMode((v) => !v)}
               onResultChange={setResult}
             />
             {error && (
@@ -113,17 +113,8 @@ export function LabConsole() {
             )}
           </div>
 
-          {/* Center: expert bar (ряд 2) */}
-          <div className="lg:col-start-2 lg:row-start-2">
-            <ExpertBar
-              disabled={!result}
-              editMode={editMode}
-              onToggleEdit={() => setEditMode((v) => !v)}
-            />
-          </div>
-
-          {/* Right: metrics — на всю высоту (оба ряда) */}
-          <div className="lg:col-start-3 lg:row-span-2 lg:row-start-1">
+          {/* Right: metrics */}
+          <div>
             <MetricsPanel
               sample={active}
               result={result}

@@ -22,6 +22,9 @@ const MAX_HANDLES = 300;
 const EDIT_MAX_POINTS = 60;
 // Нижний предел точек на кольцо (чтобы не выродить контур при упрощении).
 const MIN_RING_POINTS = 12;
+// Верхний предел точек на сегмент для кнопки «+» (держим ниже MAX_HANDLES, чтобы
+// ручки не начали прореживаться и не появлялись «фантомные» точки).
+const EDIT_POINTS_MAX = 240;
 type Bounds = { x0: number; y0: number; x1: number; y1: number };
 const FULL_BOUNDS: Bounds = { x0: 0, y0: 0, x1: 1, y1: 1 };
 // Системная комбинация отмены: ⌘Z на macOS, Ctrl+Z в остальных ОС.
@@ -37,6 +40,7 @@ export function SlideViewer({
   status,
   step,
   editMode,
+  onToggleEdit,
   onResultChange,
 }: {
   sample: Sample;
@@ -45,6 +49,7 @@ export function SlideViewer({
   status: "idle" | "processing" | "done";
   step: number;
   editMode: boolean;
+  onToggleEdit: () => void;
   onResultChange: (r: AnalysisResult) => void;
 }) {
   const [layers, setLayers] = useState<Layers>({
@@ -361,13 +366,25 @@ export function SlideViewer({
     commitSelectedPolys(polys);
   }
 
-  // Ручное «Упростить ещё»: прореживаем выбранный контур примерно до 60% текущих
-  // точек (нижний порог — MIN_RING_POINTS на кольцо). Можно жать несколько раз.
+  // Кнопка «−»: прореживаем выбранный контур примерно до 60% текущих точек
+  // (нижний порог — MIN_RING_POINTS на кольцо). Можно жать несколько раз.
   function simplifySelected() {
     if (!selectedSeg) return;
     const before = selectedSeg.polygons.reduce((n, r) => n + r.length, 0);
     const polys = simplifySegmentPolys(selectedSeg.polygons, Math.round(before * 0.6));
     if (!polys) return; // упрощать нечего
+    pushHistory();
+    commitSelectedPolys(polys);
+  }
+
+  // Кнопка «+»: сгущаем контур — добавляем середины самых длинных рёбер, доводя
+  // примерно до 160% текущих точек (потолок — EDIT_POINTS_MAX на сегмент).
+  function densifySelected() {
+    if (!selectedSeg) return;
+    const before = selectedSeg.polygons.reduce((n, r) => n + r.length, 0);
+    const target = Math.min(EDIT_POINTS_MAX, Math.round(before * 1.6));
+    const polys = densifySegmentPolys(selectedSeg.polygons, target);
+    if (!polys) return; // сгущать некуда
     pushHistory();
     commitSelectedPolys(polys);
   }
@@ -619,13 +636,21 @@ export function SlideViewer({
   return (
     <div className="card flex flex-col overflow-hidden">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <LayerChip active={layers.image} onClick={() => toggle("image")} label="Исходник" disabled={!hasImage} />
-          <LayerChip active={layers.mask} onClick={() => toggle("mask")} label="Маска фаз" disabled={!result} />
-          <LayerChip active={layers.heatmap} onClick={() => toggle("heatmap")} label="Карта уверенности" disabled={!result} />
-        </div>
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-3">
+        <LayerChip active={layers.heatmap} onClick={() => toggle("heatmap")} label="Карта уверенности" disabled={!result} />
+        <button
+          disabled={!result}
+          onClick={onToggleEdit}
+          title="Ручная коррекция маски"
+          className={`rounded-pill border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+            editMode
+              ? "border-brand bg-brand/15 text-ink"
+              : "border-line bg-white text-ink-soft hover:border-ink/30"
+          }`}
+        >
+          {editMode ? "Завершить правку" : "Правка"}
+        </button>
+        <div className="order-last flex w-full items-center gap-3">
           <label className="flex items-center gap-2 text-xs font-medium text-ink-soft">
             Прозрачность
             <input
@@ -639,7 +664,7 @@ export function SlideViewer({
               style={{ "--pct": `${((maskOpacity - 0.15) / (0.9 - 0.15)) * 100}%` } as React.CSSProperties}
             />
           </label>
-          <div className="flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-1">
             <IconBtn onClick={() => zoomBy(1 / 1.4)}>−</IconBtn>
             <span className="w-12 text-center text-xs font-semibold text-ink">{zoomPct}%</span>
             <IconBtn onClick={() => zoomBy(1.4)}>+</IconBtn>
@@ -696,15 +721,29 @@ export function SlideViewer({
             >
               Удалить
             </button>
-            <button
-              onClick={simplifySelected}
-              disabled={!selectedId || selectedPointCount <= MIN_RING_POINTS}
-              title="Прорядить точки контура (Douglas–Peucker)"
-              className="btn-soft !py-1 text-xs disabled:opacity-40"
-            >
-              Упростить
-              {selectedId && selectedPointCount > MIN_RING_POINTS ? ` (${selectedPointCount})` : ""}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={simplifySelected}
+                disabled={!selectedId || selectedPointCount <= MIN_RING_POINTS}
+                aria-label="Меньше точек"
+                title="Меньше точек (упростить контур)"
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-base leading-none text-ink hover:border-ink/30 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-line"
+              >
+                −
+              </button>
+              <span className="min-w-14 text-center text-xs font-medium text-black">
+                точки{selectedId ? ` ${selectedPointCount}` : ""}
+              </span>
+              <button
+                onClick={densifySelected}
+                disabled={!selectedId || selectedPointCount >= EDIT_POINTS_MAX}
+                aria-label="Больше точек"
+                title="Больше точек (сгустить контур)"
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-base leading-none text-ink hover:border-ink/30 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-line"
+              >
+                +
+              </button>
+            </div>
             {adding ? (
               <>
                 <button onClick={finishAdd} className="btn-primary !py-1 text-xs">
@@ -919,6 +958,44 @@ function simplifySegmentPolys(polygons: number[][][], target: number): number[][
     return s;
   });
   return changed ? out : null;
+}
+
+// Сгустить все кольца сегмента примерно до `target` точек суммарно (бюджет —
+// пропорционально длине колец). Возвращает новые polygons или null, если некуда.
+function densifySegmentPolys(polygons: number[][][], target: number): number[][][] | null {
+  const total = polygons.reduce((n, r) => n + r.length, 0);
+  if (total >= target) return null;
+  let changed = false;
+  const out = polygons.map((ring) => {
+    const budget = Math.max(ring.length, Math.round((target * ring.length) / total));
+    const d = densifyRing(ring, budget);
+    if (d.length > ring.length) changed = true;
+    return d;
+  });
+  return changed ? out : null;
+}
+
+// Добавлять середину самого длинного ребра, пока в кольце не станет `target` точек.
+function densifyRing(ring: number[][], target: number): number[][] {
+  if (ring.length < 2 || ring.length >= target) return ring;
+  const out = ring.map((p) => p.slice());
+  while (out.length < target) {
+    let bi = 0;
+    let best = -1;
+    for (let i = 0; i < out.length; i++) {
+      const a = out[i];
+      const b = out[(i + 1) % out.length];
+      const d = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
+      if (d > best) {
+        best = d;
+        bi = i;
+      }
+    }
+    const a = out[bi];
+    const b = out[(bi + 1) % out.length];
+    out.splice(bi + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+  }
+  return out;
 }
 
 // Упростить кольцо до ~targetMax точек, наращивая допуск, пока не уложимся.
