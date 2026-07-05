@@ -62,7 +62,7 @@ body {
   border-radius: 9999px;
   background: linear-gradient(
     to right,
-    #00e6a6 var(--pct, 50%),
+    #000000 var(--pct, 50%),
     #e6e6ec var(--pct, 50%)
   );
 }
@@ -74,7 +74,7 @@ body {
   height: 16px;
   border: none;
   border-radius: 9999px;
-  background: #00e6a6;
+  background: #000000;
   cursor: pointer;
 }
 /* Firefox */
@@ -86,13 +86,13 @@ body {
 .slider::-moz-range-progress {
   height: 6px;
   border-radius: 9999px;
-  background: #00e6a6;
+  background: #000000;
 }
 .slider::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border: none;
   border-radius: 9999px;
-  background: #00e6a6;
+  background: #000000;
   cursor: pointer;
 }

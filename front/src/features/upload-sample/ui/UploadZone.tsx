@@ -72,9 +72,6 @@ export function UploadZone({ onUpload }: { onUpload: (s: Sample[]) => void }) {
           e.target.value = "";
         }}
       />
-      <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-brand/15 text-xl">
-        ⬆
-      </div>
       <p className="text-sm font-semibold text-ink">
         {busy
           ? "Загрузка…"

@@ -9,18 +9,19 @@ import { UploadZone } from "@/features/upload-sample";
 import { SampleQueue } from "@/widgets/sample-queue";
 import { SlideViewer } from "@/widgets/slide-viewer";
 import { MetricsPanel } from "@/widgets/metrics-panel";
-import { Logo } from "@/shared/ui/logo";
-import { Spinner } from "@/shared/ui/spinner";
 
 export function LabConsole() {
   const [samples, setSamples] = useState<Sample[]>(SAMPLES);
-  const [active, setActive] = useState<Sample>(SAMPLES[0]);
+  const [active, setActive] = useState<Sample | null>(SAMPLES[0] ?? null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [status, setStatus] = useState<"idle" | "processing" | "done">("idle");
   const [step, setStep] = useState(0);
   const [selectedPhase, setSelectedPhase] = useState<"all" | Phase>("all");
   const [editMode, setEditMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Боковые панели в стиле VS Code: по дефолту открыты, обе можно свернуть.
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
 
   function selectSample(s: Sample) {
     setActive(s);
@@ -39,6 +40,7 @@ export function LabConsole() {
   }
 
   async function runAnalysis() {
+    if (!active) return;
     setStatus("processing");
     setResult(null);
     setEditMode(false);
@@ -62,68 +64,68 @@ export function LabConsole() {
   }
 
   return (
-    <main className="min-h-screen px-4 pb-16 pt-6">
-      <div className="mx-auto max-w-[1400px]">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div className="inline-flex items-center rounded-pill bg-white px-6 py-3">
-            <Logo className="h-7 w-auto text-ink" />
+    <main className="flex h-screen w-full gap-3 overflow-hidden p-3">
+      {/* Left panel: upload + queue */}
+      {leftOpen && (
+        <aside className="flex w-[300px] flex-none flex-col gap-3 overflow-y-auto">
+          <UploadZone onUpload={onUpload} />
+          <SampleQueue
+            samples={samples}
+            activeId={active?.id ?? ""}
+            onSelect={selectSample}
+          />
+        </aside>
+      )}
+
+      {/* Center: viewer на весь экран */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+        {active ? (
+          <SlideViewer
+            sample={active}
+            result={result}
+            selectedPhase={selectedPhase}
+            status={status}
+            step={step}
+            editMode={editMode}
+            leftOpen={leftOpen}
+            onToggleLeft={() => setLeftOpen((v) => !v)}
+            rightOpen={rightOpen}
+            onToggleRight={() => setRightOpen((v) => !v)}
+            onToggleEdit={() => setEditMode((v) => !v)}
+            onAnalyze={runAnalysis}
+            onResultChange={setResult}
+          />
+        ) : (
+          <div className="card flex flex-1 items-center justify-center p-8 text-center">
+            <p className="text-sm text-ink-soft">
+              Загрузите образец, чтобы начать анализ.
+            </p>
           </div>
-          <button
-            onClick={runAnalysis}
-            disabled={status === "processing"}
-            className="btn-primary"
-          >
-            {status === "processing" ? (
-              <>
-                <Spinner /> Анализ…
-              </>
-            ) : (
-              <>Анализировать образец</>
-            )}
-          </button>
-        </div>
+        )}
+        {error && (
+          <p className="flex-none rounded-xl bg-phase-thin/10 px-3 py-2 text-xs text-phase-thin">
+            {error}
+          </p>
+        )}
+      </div>
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[300px_1fr_360px]">
-          {/* Left: upload + queue */}
-          <aside className="flex flex-col gap-5">
-            <UploadZone onUpload={onUpload} />
-            <SampleQueue
-              samples={samples}
-              activeId={active.id}
-              onSelect={selectSample}
-            />
-          </aside>
-
-          {/* Center: viewer */}
-          <div>
-            <SlideViewer
-              sample={active}
-              result={result}
-              selectedPhase={selectedPhase}
-              status={status}
-              step={step}
-              editMode={editMode}
-              onToggleEdit={() => setEditMode((v) => !v)}
-              onResultChange={setResult}
-            />
-            {error && (
-              <p className="mt-2 rounded-xl bg-phase-thin/10 px-3 py-2 text-xs text-phase-thin">
-                {error}
-              </p>
-            )}
-          </div>
-
-          {/* Right: metrics */}
-          <div>
+      {/* Right panel: classification / metrics */}
+      {rightOpen && (
+        <aside className="w-[340px] flex-none overflow-y-auto">
+          {active ? (
             <MetricsPanel
               sample={active}
               result={result}
               selectedPhase={selectedPhase}
               onSelectPhase={setSelectedPhase}
             />
-          </div>
-        </div>
-      </div>
+          ) : (
+            <div className="card p-8 text-center text-sm text-ink-soft">
+              Нет выбранного образца.
+            </div>
+          )}
+        </aside>
+      )}
     </main>
   );
 }

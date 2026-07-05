@@ -4,6 +4,7 @@ import type { Phase } from "@/entities/phase";
 import { PHASE_META } from "@/entities/phase";
 import type { Sample } from "@/entities/sample";
 import type { AnalysisResult } from "@/entities/analysis";
+import { segmentAreaFrac } from "@/features/analyze-sample";
 import { exportCsv, exportReport } from "@/features/export-report";
 
 
@@ -31,14 +32,12 @@ export function MetricsPanel({
     );
   }
 
-  const rows: { phase: Phase; value: number; caption: string }[] = [
-    { phase: "common", value: result.commonShare, caption: "от сульфидов" },
-    { phase: "thin", value: result.thinShare, caption: "от сульфидов" },
-    { phase: "talc", value: result.talcShare, caption: "от кадра" },
-  ];
+  // Доля каждой фазы относительно всего кадра (в %), как для талька.
+  const framePct: Record<Phase, number> = { common: 0, thin: 0, talc: 0 };
+  for (const s of result.segments) framePct[s.phase] += segmentAreaFrac(s) * 100;
 
   return (
-    <div className="card flex h-full flex-col p-5">
+    <div className="card flex flex-col p-5">
       {/* Verdict */}
       <div className="mb-4 rounded-2xl bg-surface px-4 py-3">
         <div className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
@@ -49,7 +48,7 @@ export function MetricsPanel({
         </div>
       </div>
 
-      {/* Legend / filter */}
+      {/* Legend / filter — доля каждой фазы от кадра показана здесь же */}
       <div className="mb-4 space-y-1.5">
         <FilterRow
           active={selectedPhase === "all"}
@@ -64,44 +63,9 @@ export function MetricsPanel({
             onClick={() => onSelectPhase(p)}
             color={PHASE_META[p].color}
             label={PHASE_META[p].label}
+            value={framePct[p]}
           />
         ))}
-      </div>
-
-      {/* Metrics table */}
-      <div className="mb-4 rounded-2xl border border-line">
-        <div className="flex items-center justify-between px-4 py-2.5">
-          <span className="text-sm text-ink-soft">Доля сульфидов</span>
-          <span className="font-mono text-lg font-bold text-ink">
-            {result.sulfideShare.toFixed(1)}%
-          </span>
-        </div>
-        {rows.map((r) => (
-          <div
-            key={r.phase}
-            className="flex items-center justify-between border-t border-line px-4 py-2.5"
-          >
-            <span className="flex items-center gap-2 text-sm text-ink">
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ background: PHASE_META[r.phase].color }}
-              />
-              {PHASE_META[r.phase].label}
-            </span>
-            <span className="text-right">
-              <span className="font-mono font-bold text-ink">
-                {r.value.toFixed(1)}%
-              </span>
-              <span className="ml-1 text-xs text-ink-faint">{r.caption}</span>
-            </span>
-          </div>
-        ))}
-        {/* <div className="flex items-center justify-between border-t border-line px-4 py-2.5">
-          <span className="text-sm text-ink-soft">Точность (F1)</span>
-          <span className="font-mono font-bold text-brand-dark">
-            {result.f1.toFixed(3)}
-          </span>
-        </div> */}
       </div>
 
       {/* Text conclusion */}
@@ -113,7 +77,7 @@ export function MetricsPanel({
       </div>
 
       {/* Export */}
-      <div className="mt-auto flex gap-2">
+      <div className="flex gap-2">
         <button
           onClick={() => exportCsv(sample, result)}
           className="btn-soft flex-1 justify-center"
@@ -136,11 +100,13 @@ function FilterRow({
   onClick,
   color,
   label,
+  value,
 }: {
   active: boolean;
   onClick: () => void;
   color: string;
   label: string;
+  value?: number;
 }) {
   return (
     <button
@@ -152,7 +118,12 @@ function FilterRow({
       }`}
     >
       <span className="h-3 w-3 rounded-full" style={{ background: color }} />
-      {label}
+      <span className="flex-1 text-left">{label}</span>
+      {value !== undefined && (
+        <span className="font-mono text-sm font-bold text-ink">
+          {value.toFixed(1)}%
+        </span>
+      )}
     </button>
   );
 }

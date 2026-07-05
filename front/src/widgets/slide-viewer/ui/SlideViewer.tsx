@@ -7,6 +7,7 @@ import type { Sample } from "@/entities/sample";
 import type { AnalysisResult, Segment } from "@/entities/analysis";
 import { PREPROCESS_STEPS } from "@/entities/analysis";
 import { recomputeResult } from "@/features/analyze-sample";
+import { Spinner } from "@/shared/ui/spinner";
 
 type Layers = { image: boolean; mask: boolean; heatmap: boolean };
 
@@ -41,6 +42,11 @@ export function SlideViewer({
   step,
   editMode,
   onToggleEdit,
+  onAnalyze,
+  leftOpen,
+  onToggleLeft,
+  rightOpen,
+  onToggleRight,
   onResultChange,
 }: {
   sample: Sample;
@@ -50,6 +56,11 @@ export function SlideViewer({
   step: number;
   editMode: boolean;
   onToggleEdit: () => void;
+  onAnalyze: () => void;
+  leftOpen: boolean;
+  onToggleLeft: () => void;
+  rightOpen: boolean;
+  onToggleRight: () => void;
   onResultChange: (r: AnalysisResult) => void;
 }) {
   const [layers, setLayers] = useState<Layers>({
@@ -634,22 +645,57 @@ export function SlideViewer({
   );
 
   return (
-    <div className="card flex flex-col overflow-hidden">
+    <div className="card flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-3">
-        <LayerChip active={layers.heatmap} onClick={() => toggle("heatmap")} label="Карта уверенности" disabled={!result} />
         <button
-          disabled={!result}
-          onClick={onToggleEdit}
-          title="Ручная коррекция маски"
-          className={`rounded-pill border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
-            editMode
-              ? "border-brand bg-brand/15 text-ink"
-              : "border-line bg-white text-ink-soft hover:border-ink/30"
+          onClick={onToggleLeft}
+          title={leftOpen ? "Свернуть левую панель" : "Развернуть левую панель"}
+          aria-label={leftOpen ? "Свернуть левую панель" : "Развернуть левую панель"}
+          className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-base leading-none text-ink hover:border-ink/30"
+        >
+          {leftOpen ? "«" : "»"}
+        </button>
+        <button
+          onClick={onAnalyze}
+          disabled={status !== "idle"}
+          className={`inline-flex items-center gap-2 rounded-pill border border-brand px-3 py-1.5 text-xs font-semibold text-black transition disabled:cursor-not-allowed ${
+            status === "done" ? "bg-brand/10 opacity-100" : "bg-brand"
           }`}
         >
-          {editMode ? "Завершить правку" : "Правка"}
+          {status === "processing" ? (
+            <>
+              <Spinner /> Анализ…
+            </>
+          ) : status === "done" ? (
+            "Проанализировано"
+          ) : (
+            "Анализировать образец"
+          )}
         </button>
+        <div className="ml-auto flex items-center gap-3">
+          <LayerChip active={layers.heatmap} onClick={() => toggle("heatmap")} label="Карта уверенности" disabled={!result} />
+          <button
+            disabled={!result}
+            onClick={onToggleEdit}
+            title="Ручная коррекция маски"
+            className={`rounded-pill border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+              editMode
+                ? "border-brand bg-brand/15 text-ink"
+                : "border-line bg-white text-ink-soft hover:border-ink/30"
+            }`}
+          >
+            {editMode ? "Завершить правку" : "Правка"}
+          </button>
+          <button
+            onClick={onToggleRight}
+            title={rightOpen ? "Свернуть панель метрик" : "Развернуть панель метрик"}
+            aria-label={rightOpen ? "Свернуть панель метрик" : "Развернуть панель метрик"}
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-base leading-none text-ink hover:border-ink/30"
+          >
+            {rightOpen ? "»" : "«"}
+          </button>
+        </div>
         <div className="order-last flex w-full items-center gap-3">
           <label className="flex items-center gap-2 text-xs font-medium text-ink-soft">
             Прозрачность
@@ -776,7 +822,7 @@ export function SlideViewer({
       )}
 
       {/* Canvas */}
-      <div ref={canvasWrapRef} className="relative aspect-[4/3] w-full overflow-hidden bg-[#0c0c14]">
+      <div ref={canvasWrapRef} className="relative min-h-0 w-full flex-1 overflow-hidden bg-[#0c0c14]">
         {hasImage ? (
           <>
             <div ref={osdRef} className="absolute inset-0" />
