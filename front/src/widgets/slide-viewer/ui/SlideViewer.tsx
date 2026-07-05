@@ -16,8 +16,12 @@ const PHASES: Phase[] = ["common", "thin", "talc"];
 const UNDO_LIMIT = 20;
 // Максимум одновременно рисуемых ручек-вершин (culling по вьюпорту + прореживание).
 const MAX_HANDLES = 300;
-// Цель по числу точек для кнопки «Упростить» (Douglas–Peucker).
-const SIMPLIFY_TARGET = 60;
+// К стольким точкам авто-упрощаем контур при выборе для правки. ML отдаёт тысячи
+// вершин — ручки налезли бы друг на друга. После упрощения каждая ручка = ровно
+// одна реальная вершина, поэтому «фантомных» точек при перетаскивании не возникает.
+const EDIT_MAX_POINTS = 60;
+// Нижний предел точек на кольцо (чтобы не выродить контур при упрощении).
+const MIN_RING_POINTS = 12;
 type Bounds = { x0: number; y0: number; x1: number; y1: number };
 const FULL_BOUNDS: Bounds = { x0: 0, y0: 0, x1: 1, y1: 1 };
 // Системная комбинация отмены: ⌘Z на macOS, Ctrl+Z в остальных ОС.
@@ -69,6 +73,8 @@ export function SlideViewer({
   const [draft, setDraft] = useState<number[][]>([]);
   // Active vertex drag: which ring / point is moved. `pushed` = один undo на drag.
   const vDrag = useRef<{ ri: number; pi: number; pushed: boolean } | null>(null);
+  // Сегмент, который уже авто-упрощён при этом выборе (чтобы не упрощать повторно).
+  const autoSimplifiedRef = useRef<string | null>(null);
 
   // Undo/redo history: snapshots of the whole result taken BEFORE each edit.
   const [undoStack, setUndoStack] = useState<AnalysisResult[]>([]);
@@ -99,6 +105,7 @@ export function SlideViewer({
       setAdding(false);
       setDraft([]);
     }
+    autoSimplifiedRef.current = null;
   }, [editMode]);
 
   const toggle = (k: keyof Layers) => setLayers((l) => ({ ...l, [k]: !l[k] }));
@@ -354,16 +361,33 @@ export function SlideViewer({
     commitSelectedPolys(polys);
   }
 
-  // «Упростить контур»: Douglas–Peucker до ~SIMPLIFY_TARGET точек на кольцо.
+  // Ручное «Упростить ещё»: прореживаем выбранный контур примерно до 60% текущих
+  // точек (нижний порог — MIN_RING_POINTS на кольцо). Можно жать несколько раз.
   function simplifySelected() {
     if (!selectedSeg) return;
     const before = selectedSeg.polygons.reduce((n, r) => n + r.length, 0);
-    const polys = selectedSeg.polygons.map((r) => simplifyRing(r, SIMPLIFY_TARGET));
-    const after = polys.reduce((n, r) => n + r.length, 0);
-    if (after >= before) return; // упрощать нечего
+    const polys = simplifySegmentPolys(selectedSeg.polygons, Math.round(before * 0.6));
+    if (!polys) return; // упрощать нечего
     pushHistory();
     commitSelectedPolys(polys);
   }
+
+  // Авто-упрощение: как только сегмент выбран для правки, схлопываем его тысячи
+  // ML-вершин до ~EDIT_MAX_POINTS хорошо разнесённых точек. Каждая оставшаяся
+  // ручка — реальная вершина без совпадающих соседей, поэтому при перетаскивании
+  // не возникает «фантомная» точка на старом месте. Обратимо через Undo.
+  useEffect(() => {
+    if (!editMode || !selectedId || !result) return;
+    if (autoSimplifiedRef.current === selectedId) return;
+    autoSimplifiedRef.current = selectedId;
+    const seg = result.segments.find((s) => s.id === selectedId);
+    if (!seg) return;
+    const polys = simplifySegmentPolys(seg.polygons, EDIT_MAX_POINTS);
+    if (!polys) return;
+    pushHistory();
+    commitSelectedPolys(polys);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, editMode]);
 
   const selectedPointCount =
     selectedSeg?.polygons.reduce((n, r) => n + r.length, 0) ?? 0;
@@ -674,12 +698,12 @@ export function SlideViewer({
             </button>
             <button
               onClick={simplifySelected}
-              disabled={!selectedId || selectedPointCount <= SIMPLIFY_TARGET}
-              title="Упростить контур (Douglas–Peucker)"
+              disabled={!selectedId || selectedPointCount <= MIN_RING_POINTS}
+              title="Прорядить точки контура (Douglas–Peucker)"
               className="btn-soft !py-1 text-xs disabled:opacity-40"
             >
               Упростить
-              {selectedId && selectedPointCount > SIMPLIFY_TARGET ? ` (${selectedPointCount})` : ""}
+              {selectedId && selectedPointCount > MIN_RING_POINTS ? ` (${selectedPointCount})` : ""}
             </button>
             {adding ? (
               <>
@@ -879,6 +903,22 @@ function rdp(points: number[][], eps: number): number[][] {
     return left.slice(0, -1).concat(right);
   }
   return [a, b];
+}
+
+// Упростить все кольца сегмента примерно до `target` точек суммарно, деля бюджет
+// пропорционально длине колец (но не ниже MIN_RING_POINTS на кольцо). Возвращает
+// новые polygons или null, если упрощать нечего (точек уже меньше цели).
+function simplifySegmentPolys(polygons: number[][][], target: number): number[][][] | null {
+  const total = polygons.reduce((n, r) => n + r.length, 0);
+  if (total <= target) return null;
+  let changed = false;
+  const out = polygons.map((ring) => {
+    const budget = Math.max(MIN_RING_POINTS, Math.round((target * ring.length) / total));
+    const s = simplifyRing(ring, budget);
+    if (s.length < ring.length) changed = true;
+    return s;
+  });
+  return changed ? out : null;
 }
 
 // Упростить кольцо до ~targetMax точек, наращивая допуск, пока не уложимся.
